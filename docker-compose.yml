@@ -1,5 +1,5 @@
-# 校园综合服务平台 · 本地环境（MySQL 8 + Redis 7）
-# 使用本地已有镜像（无需联网拉取）；宿主端口 3308/6380，与 12306、DOVideo 项目完全错开
+# 校园综合服务平台 · 本地依赖（MySQL + Redis + Nacos + RocketMQ）
+# 一条命令启动全部依赖：cp .env.example .env && docker compose up -d
 services:
   mysql:
     image: mysql:8.0
@@ -7,18 +7,17 @@ services:
     ports:
       - "127.0.0.1:3308:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: campus123456
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
       MYSQL_DATABASE: campus_platform
       TZ: Asia/Shanghai
-    # local_infile=1：允许 LOAD DATA LOCAL INFILE 批量导入种子数据（阶段 2）
-    # max-connections=500：阶段 14 分库分表后，ShardingSphere 双层连接池
-    #（外层 128 + 内层 2 库 × 128：热点分片会把同分片连接吃满）会把默认 151 顶满
+    # local_infile=1：允许 LOAD DATA LOCAL INFILE 批量导入种子数据
+    # max-connections=500：分库分表后 ShardingSphere 双层连接池需要
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci --local-infile=1 --max-connections=500
     volumes:
       - ./volumes/mysql:/var/lib/mysql
       - ./resources/database:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -pcampus123456 --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -29,11 +28,60 @@ services:
     container_name: campus-redis
     ports:
       - "127.0.0.1:6380:6379"
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "campus123456"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - ./volumes/redis:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a campus123456 ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: campus-nacos
+    ports:
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 256m
+      JVM_XMN: 128m
+    volumes:
+      - ./volumes/nacos:/home/nacos/data
+
+  rmqnamesrv:
+    image: apache/rocketmq:5.3.4
+    container_name: campus-rmqnamesrv
+    ports:
+      - "127.0.0.1:9876:9876"
+    environment:
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqnamesrv
+
+  rmqbroker:
+    image: apache/rocketmq:5.3.4
+    container_name: campus-rmqbroker
+    ports:
+      - "127.0.0.1:10911:10911"
+      - "127.0.0.1:10909:10909"
+    environment:
+      NAMESRV_ADDR: rmqnamesrv:9876
+      BROKER_ID: 0
+      BROKER_ROLE: ASYNC_MASTER
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/broker.conf:ro
+      - campus-rocketmq-store:/home/rocketmq/store
+      - campus-rocketmq-logs:/home/rocketmq/logs
+    command: sh mqbroker -n rmqnamesrv:9876 -c /home/rocketmq/broker.conf
+    depends_on:
+      - rmqnamesrv
+
+volumes:
+  campus-rocketmq-store:
+  campus-rocketmq-logs:

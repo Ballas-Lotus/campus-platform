@@ -4,6 +4,7 @@ volumes/
 # 本地环境变量
 .env
 .env.*
+!.env.example
 
 # Java
 target/

@@ -26,20 +26,20 @@ spring:
       connection-timeout: 5000
   data:
     redis:
-      host: 127.0.0.1
-      port: 6380
-      password: campus123456
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
       timeout: 3s
       lettuce:
         shutdown-timeout: 100ms
   cloud:
     nacos:
       discovery:
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
 
 # 阶段 13：RocketMQ（复用本机 9876；topic/group 前缀 campus_* / campus-* 与 12306 隔离）
 rocketmq:
-  name-server: 127.0.0.1:9876
+  name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
   producer:
     group: campus-producer
     send-message-timeout: 3000
@@ -121,10 +121,10 @@ campus:
     # 阶段 14：分库分表观测接口的物理直连（绕过 ShardingSphere 数物理分片行数；
     # 仅 /api/sharding/* 使用，不参与任何业务读写）
     physical:
-      url0: jdbc:mysql://127.0.0.1:3308/campus_0?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
-      url1: jdbc:mysql://127.0.0.1:3308/campus_1?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
-      username: root
-      password: campus123456
+      url0: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3308}/campus_0?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      url1: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3308}/campus_1?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      username: ${DB_USERNAME:root}
+      password: ${DB_PASSWORD:}
 
 logging:
   level:

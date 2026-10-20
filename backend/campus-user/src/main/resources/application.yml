@@ -20,9 +20,9 @@ spring:
       connection-timeout: 5000
   data:
     redis:
-      host: 127.0.0.1
-      port: 6380
-      password: campus123456
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
       timeout: 3s
       lettuce:
         shutdown-timeout: 100ms
@@ -30,7 +30,7 @@ spring:
     nacos:
       discovery:
         # 阶段 12：本机 Nacos（与 12306 项目共用，服务名前缀 campus-* 隔离）
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
 
 mybatis-plus:
   configuration:

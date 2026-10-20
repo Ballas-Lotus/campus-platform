@@ -36,21 +36,25 @@
 
 - JDK 17
 - Node.js 18+ 与 pnpm
-- Docker Compose（MySQL 3308 / Redis 6380）
-- Nacos（8848）与 RocketMQ（9876）需在本机可用
+- Docker Compose（一条命令启动 MySQL、Redis、Nacos、RocketMQ）
 
 ## 启动
 
 ```bash
-# 1. 中间件
+# 1. 准备配置
+cp .env.example .env
+# 修改 .env 里的 MYSQL_ROOT_PASSWORD / DB_PASSWORD / REDIS_PASSWORD
+# 注意：DB_PASSWORD 必须与 MYSQL_ROOT_PASSWORD 一致（后端使用 root 连接）
+
+# 2. 启动全部依赖：MySQL 3308 / Redis 6380 / Nacos 8848 / RocketMQ 9876
 docker compose up -d
 
-# 2. 分库分表迁移（首次）
-docker exec -i campus-mysql mysql -uroot -pcampus123456 --default-character-set=utf8mb4 < resources/database/migrate-sharding.sql
+# 3. 首次启动执行分库分表迁移
+set -a; source .env; set +a
+docker exec -i campus-mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" \
+  --default-character-set=utf8mb4 < resources/database/migrate-sharding.sql
 
-# 3. 启动 Nacos 与 RocketMQ（本机已有实例；端口 8848 / 9876）
-
-# 4. 后端
+# 4. 后端（沿用当前 shell 已注入的环境变量）
 cd backend
 JAVA_HOME=/path/to/jdk-17 ./mvnw clean package -DskipTests
 java -jar campus-user/target/campus-user-0.0.1-SNAPSHOT.jar &
@@ -63,15 +67,15 @@ pnpm install
 pnpm dev
 ```
 
-浏览器打开 <http://localhost:5173>。
+浏览器打开 <http://localhost:5173>。如果后端换了一个新终端启动，先重新执行 `set -a; source .env; set +a`。
 
 ## 端口与账号
 
 | 组件 | 地址 | 账号 / 密码 |
 |---|---|---|
-| MySQL | 127.0.0.1:3308 | root / campus123456 |
-| Redis | 127.0.0.1:6380 | 密码 campus123456 |
-| Nacos | http://127.0.0.1:8848/nacos | nacos / nacos |
+| MySQL | 127.0.0.1:3308 | root / 以 `.env` 的 `MYSQL_ROOT_PASSWORD` 为准 |
+| Redis | 127.0.0.1:6380 | 以 `.env` 的 `REDIS_PASSWORD` 为准 |
+| Nacos | http://127.0.0.1:8848/nacos | 本地关闭鉴权 |
 | RocketMQ NameServer | 127.0.0.1:9876 | — |
 | 网关 | http://127.0.0.1:9080 | — |
 | 用户 / 业务服务 | 9081 / 9082 | — |
@@ -92,7 +96,8 @@ campus-platform/
 ├── resources/database/      # 建表与迁移脚本
 ├── data-generator/          # 种子数据生成
 ├── tools/                   # 并发压测脚本
-└── docker-compose.yml       # MySQL / Redis
+├── rocketmq/broker.conf     # RocketMQ Broker 配置
+└── docker-compose.yml       # MySQL / Redis / Nacos / RocketMQ
 ```
 
 ## 压测与种子数据
@@ -112,3 +117,5 @@ python import_data.py
 - `pnpm install` 报 `ERR_PNPM_IGNORED_BUILDS`：执行 `pnpm approve-builds --all` 后重试。
 - 分片后连接池需按单分片峰值并发规划，MySQL `max_connections=500`（compose 已固化）。
 - `127.0.0.1:5173` 不通时改用 `http://localhost:5173` 访问。
+- Nacos / RocketMQ 首次启动需要几十秒；后端注册失败会自动重试。
+- 修改 `.env` 的 `DB_PASSWORD` 后，必须同步修改两份 `shardingsphere-config.yaml`（ShardingSphere 5.3.2 不支持环境变量占位符）。

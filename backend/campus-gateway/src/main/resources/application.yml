@@ -6,16 +6,16 @@ spring:
     name: campus-gateway
   data:
     redis:
-      host: 127.0.0.1
-      port: 6380
-      password: campus123456
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6380}
+      password: ${REDIS_PASSWORD:}
       timeout: 3s
       lettuce:
         shutdown-timeout: 100ms
   cloud:
     nacos:
       discovery:
-        server-addr: 127.0.0.1:8848
+        server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
     gateway:
       # 路由：按路径前缀分流（lb:// = 从 Nacos 解析实例 + 负载均衡）
       routes:
