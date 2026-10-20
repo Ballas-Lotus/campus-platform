@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>校园综合服务平台 · 全流程大图 + 高并发专项图</title>
+<!--
+  生成：2026-10-10（阶段 19 完成后）
+  定位：一张纸看懂——① 系统架构全景 ② 一条业务请求怎么走 ③ 高并发下每一层怎么挡
+  配套：docs/11（高并发全流程·逐关讲解）· docs/13（读模型与快路径升级）· docs/10（测试指南）
+  演进提示（2026-10-17）：阶段 21 起选课新增"受理制"链路（Redis 即真相 + MQ 异步落库，
+  默认开启、可一键回退），本文中的"同步落库"描述对应回退/降级链路；现状见 docs/18。
+-->
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#ffffff; --ink:#0f172a; --sub:#475569; --faint:#94a3b8;
+    --line:#e2e8f0; --blue:#2563eb; --blue-bg:#eff6ff; --green:#059669; --green-bg:#ecfdf5;
+    --violet:#7c3aed; --violet-bg:#f5f3ff; --amber:#d97706; --amber-bg:#fffbeb;
+    --red:#dc2626; --red-bg:#fef2f2; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,-apple-system,"Noto Sans SC",sans-serif;
+    line-height:1.75;font-size:15px}
+  code,.mono{font-family:Consolas,"JetBrains Mono","Courier New",monospace;
+    background:#f1f5f9;padding:1px 6px;border-radius:5px;font-size:12.5px;color:#334155}
+
+  /* ---------- Hero ---------- */
+  .hero{background:
+      radial-gradient(1200px 400px at 15% -10%, rgba(37,99,235,.35), transparent 60%),
+      radial-gradient(900px 380px at 85% 0%, rgba(124,58,237,.30), transparent 60%),
+      linear-gradient(150deg,#0b1220 0%, #101c33 55%, #0b1220 100%);
+    color:#e6edf7;padding:52px 24px 44px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;inset:0;opacity:.05;
+    background-image:linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px);
+    background-size:36px 36px;pointer-events:none}
+  .hero-inner{max-width:1120px;margin:0 auto;position:relative;z-index:1}
+  .hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#9fb6dd;
+    border:1px solid rgba(159,182,221,.35);border-radius:999px;padding:4px 14px;margin-bottom:16px}
+  .hero h1{margin:0 0 10px;font-size:31px;line-height:1.45;letter-spacing:.4px}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,#7ab8ff,#b79cff);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lead{margin:0;color:#b7c6de;max-width:900px;font-size:15px}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+  .badge{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    color:#dbe7fa;border-radius:10px;padding:7px 13px;font-size:13px}
+  .badge b{color:#fff;font-size:15px;margin-right:4px}
+  .badge .ok{color:#7ef0c0}
+
+  /* ---------- 目录 ---------- */
+  .toc{max-width:1120px;margin:18px auto 0;padding:0 24px;display:flex;flex-wrap:wrap;gap:10px}
+  .toc a{text-decoration:none;color:#334155;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:6px 14px;font-size:13px}
+  .toc a:hover{border-color:#93c5fd;color:var(--blue)}
+
+  /* ---------- 通用 ---------- */
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px 70px}
+  section{margin-top:34px}
+  h2{font-size:21px;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+  h2 .no{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
+    border-radius:9px;background:var(--blue);color:#fff;font-size:15px}
+  .sub{color:var(--sub);font-size:13.5px;margin:0 0 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .canvas{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:8px;overflow-x:auto;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+  .canvas svg{display:block;width:100%;min-width:860px;height:auto}
+  .cap{color:var(--faint);font-size:12.5px;margin:10px 2px 0}
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .mini{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .mini h4{margin:0 0 6px;font-size:14px}
+  .mini p{margin:0;color:var(--sub);font-size:12.8px;line-height:1.75}
+  .num{font-family:Consolas,monospace;font-weight:800}
+  table{width:100%;border-collapse:collapse;font-size:13.2px;background:#fff;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid #eef2f7;vertical-align:top}
+  th{background:#f8fafc;color:#334155;font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+  .p-blue{background:var(--blue-bg);color:var(--blue)}
+  .p-green{background:var(--green-bg);color:var(--green)}
+  .p-red{background:var(--red-bg);color:var(--red)}
+  .p-amber{background:var(--amber-bg);color:var(--amber)}
+  .p-violet{background:var(--violet-bg);color:var(--violet)}
+  .note{background:#f8fafc;border-left:4px solid #93c5fd;border-radius:0 10px 10px 0;
+    padding:10px 14px;font-size:13px;color:#334155;margin-top:12px}
+  .steps{display:grid;gap:10px;grid-template-columns:repeat(4,1fr)}
+  @media (max-width:900px){.steps{grid-template-columns:1fr}}
+  .step{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .step .h{font-weight:700;font-size:13.5px;margin-bottom:6px}
+  .step ol{margin:0;padding-left:18px;color:var(--sub);font-size:12.8px;line-height:1.8}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-inner">
+    <span class="kicker">🎓 campus-platform · 阶段 0 ~ 19 全景</span>
+    <h1>校园综合服务平台<br><em>一张大图看懂全流程 · 再看高并发怎么挡</em></h1>
+    <p class="lead">
+      本文三张图：<b>① 架构全景</b>（谁和谁说话）→ <b>② 业务全流程</b>（一名学生的一天怎么走完系统）
+      → <b>③ 高并发专项</b>（万人同时点"选课"的那一秒，每一层各做什么）。
+      全部结论都来自本机实测，不是设计稿。
+    </p>
+    <div class="badges">
+      <span class="badge">万人齐射 <b>10,000</b> 人 → 恰好 <b class="ok">10</b> 成交 / 9,887 Redis 挡回 / 0 异常</span>
+      <span class="badge">读容量 <b>~4.2k</b> QPS · 写入口吸收 <b>~3.3k</b> req/s</span>
+      <span class="badge">读模型 <b>21.4ms → 3.05ms</b> · 合并 Lua <b>4→2</b> 次往返</span>
+      <span class="badge">回归 <b class="ok">48</b> 项全绿 · 8 压测场景 <b class="ok">ALL PASS</b></span>
+    </div>
+  </div>
+</div>
+
+<nav class="toc">
+  <a href="#arch">① 架构全景</a>
+  <a href="#biz">② 业务全流程</a>
+  <a href="#hc">③ 高并发专项图</a>
+  <a href="#codes">返回码速查</a>
+  <a href="#trade">设计取舍</a>
+  <a href="#repro">复现与证据</a>
+</nav>
+
+<div class="wrap">
+
+<!-- ================= ① 架构全景 ================= -->
+<section id="arch">
+  <h2><span class="no">1</span>架构全景：谁和谁说话</h2>
+  <p class="sub">四层：客户端 → 网关 → 服务 → 中间件。所有业务请求都走同一条主干道，没有任何"绕道直连数据库"的特殊路径。</p>
+
+  <div class="canvas">
+  <svg viewBox="0 0 1160 700" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC, Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+      </marker>
+      <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+      </marker>
+    </defs>
+
+    <!-- 层标签 -->
+    <text x="14" y="66" font-size="13" fill="#64748b" font-weight="700">客户端层</text>
+    <text x="14" y="186" font-size="13" fill="#64748b" font-weight="700">网关层</text>
+    <text x="14" y="352" font-size="13" fill="#64748b" font-weight="700">服务层</text>
+    <text x="14" y="576" font-size="13" fill="#64748b" font-weight="700">中间件层</text>
+
+    <!-- 客户端 -->
+    <rect x="96" y="22" width="1040" height="86" rx="14" fill="#eff6ff" stroke="#bfdbfe"/>
+    <rect x="112" y="36" width="476" height="58" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="128" y="58" font-size="13.5" font-weight="700" fill="#1e3a8a">Vue 3 + Element Plus 前端（Vite :5173）· 业务页面</text>
+    <text x="128" y="80" font-size="12" fill="#475569">工作台 · 图书馆座位 · 体育场馆 · 讲座 · 选课 · 我的预约 · 个人中心</text>
+    <rect x="604" y="36" width="516" height="58" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="620" y="58" font-size="13.5" font-weight="700" fill="#1e3a8a">工程演示页（前端随阶段生长）</text>
+    <text x="620" y="80" font-size="12" fill="#475569">压测 8 场景 · 缓存 · 预扣闸门 · 并发控制 · 齐射观测台 · MQ · 分库分表 · 演进对比</text>
+
+    <path d="M 604 108 L 604 142" stroke="#2563eb" stroke-width="2" marker-end="url(#arB)"/>
+    <text x="616" y="130" font-size="12" fill="#2563eb">HTTPS / JSON（统一 Bearer Token）</text>
+
+    <!-- 网关 -->
+    <rect x="96" y="146" width="1040" height="92" rx="14" fill="#f5f3ff" stroke="#ddd6fe"/>
+    <rect x="112" y="158" width="1008" height="68" rx="10" fill="#ffffff" stroke="#c4b5fd"/>
+    <text x="128" y="180" font-size="13.5" font-weight="700" fill="#5b21b6">campus-gateway :9080（Spring Cloud Gateway）</text>
+    <text x="128" y="201" font-size="12" fill="#475569">路由分流（lb:// 从 Nacos 取实例）：/api/auth/** · /api/user/** → campus-user ｜ 其余 /api/** → campus-service</text>
+    <text x="128" y="220" font-size="12" fill="#475569">JWT 第一道校验（验签 + 过期，拒绝 40100）· 跨域 CORS · 全局异常信封（code/message/data）</text>
+
+    <path d="M 356 238 L 356 272" stroke="#2563eb" stroke-width="2" marker-end="url(#arB)"/>
+    <path d="M 852 238 L 852 272" stroke="#2563eb" stroke-width="2" marker-end="url(#arB)"/>
+
+    <!-- 服务层 -->
+    <rect x="96" y="276" width="522" height="152" rx="14" fill="#f5f3ff" stroke="#ddd6fe"/>
+    <rect x="112" y="288" width="490" height="128" rx="10" fill="#ffffff" stroke="#c4b5fd"/>
+    <text x="128" y="310" font-size="13.5" font-weight="700" fill="#5b21b6">campus-user :9081</text>
+    <text x="128" y="332" font-size="12" fill="#475569">· 认证 Auth：用户名+密码校验 → 签发 JWT；登录态存 Redis</text>
+    <text x="128" y="352" font-size="12" fill="#475569">· 用户 User：个人资料 · 站内信（读取侧）· 我的预约聚合</text>
+    <text x="128" y="372" font-size="12" fill="#475569">· 用户数据独立分库：2 片，基因法（学号后缀）定分片</text>
+    <text x="128" y="394" font-size="12" fill="#94a3b8">承载：登录、会话、站内信 —— 不参与抢课/抢座的热路径</text>
+
+    <rect x="614" y="276" width="522" height="152" rx="14" fill="#eff6ff" stroke="#bfdbfe"/>
+    <rect x="630" y="288" width="490" height="128" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="646" y="310" font-size="13.5" font-weight="700" fill="#1e3a8a">campus-service :9082</text>
+    <text x="646" y="332" font-size="12" fill="#475569">· 资源 Resource：图书馆/场馆/讲座 列表与时段（缓存命中）</text>
+    <text x="646" y="352" font-size="12" fill="#475569">· 预约 Reservation：位图冲突检测 + 条件更新占片 + 分布式锁</text>
+    <text x="646" y="372" font-size="12" fill="#475569">· 选课 Course：教学班读模型 + 预扣闸门 + 8 分片落单</text>
+    <text x="646" y="394" font-size="12" fill="#94a3b8">另挂：缓存 / 预扣 / 幂等 / MQ / 分片 / 压测 的运维与演示接口</text>
+
+    <path d="M 356 428 L 356 468" stroke="#2563eb" stroke-width="2" marker-end="url(#arB)"/>
+    <path d="M 852 428 L 852 468" stroke="#2563eb" stroke-width="2" marker-end="url(#arB)"/>
+
+    <!-- 中间件层 -->
+    <rect x="96" y="472" width="1040" height="186" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+
+    <rect x="112" y="486" width="242" height="158" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="128" y="510" font-size="13" font-weight="700" fill="#0f172a">MySQL :3308</text>
+    <text x="128" y="530" font-size="12" fill="#059669" font-weight="700">真相层（唯一说了算）</text>
+    <text x="128" y="552" font-size="12" fill="#475569">· ShardingSphere：2 库 × 4 表 = 8 分片</text>
+    <text x="128" y="572" font-size="12" fill="#475569">· 条件更新 / 唯一索引 / 行锁</text>
+    <text x="128" y="592" font-size="12" fill="#475569">· 敏感列加密 · 用户时间占用位图</text>
+    <text x="128" y="616" font-size="11.5" fill="#94a3b8">承接：只接"放行后"的写入量</text>
+
+    <rect x="368" y="486" width="242" height="158" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="384" y="510" font-size="13" font-weight="700" fill="#0f172a">Redis :6380</text>
+    <text x="384" y="530" font-size="12" fill="#dc2626" font-weight="700">预计数层（快，但可丢）</text>
+    <text x="384" y="552" font-size="12" fill="#475569">· 缓存：列表 / 时段 / 教学班读模型</text>
+    <text x="384" y="572" font-size="12" fill="#475569">· 预扣计数器（闸门）· 分布式锁</text>
+    <text x="384" y="592" font-size="12" fill="#475569">· 幂等两态键 · 位图 · 布隆过滤器</text>
+    <text x="384" y="616" font-size="11.5" fill="#94a3b8">随时可重建 / 可对账 / 可降级</text>
+
+    <rect x="624" y="486" width="242" height="158" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="640" y="510" font-size="13" font-weight="700" fill="#0f172a">RocketMQ :9876</text>
+    <text x="640" y="530" font-size="12" fill="#7c3aed" font-weight="700">异步层（削峰 + 解耦）</text>
+    <text x="640" y="552" font-size="12" fill="#475569">· 站内信异步落库（批量消费 20/批）</text>
+    <text x="640" y="572" font-size="12" fill="#475569">· 延时消息（签到/爽约兜底）</text>
+    <text x="640" y="592" font-size="12" fill="#475569">· 消费端两态幂等（重复投递只落一条）</text>
+    <text x="640" y="616" font-size="11.5" fill="#94a3b8">topic 前缀 campus_* 与其他项目隔离</text>
+
+    <rect x="880" y="486" width="242" height="158" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="896" y="510" font-size="13" font-weight="700" fill="#0f172a">Nacos :8848</text>
+    <text x="896" y="530" font-size="12" fill="#2563eb" font-weight="700">基础设施（注册 + 配置）</text>
+    <text x="896" y="552" font-size="12" fill="#475569">· 服务注册发现（网关 lb:// 解析）</text>
+    <text x="896" y="572" font-size="12" fill="#475569">· Sentinel 限流规则源</text>
+    <text x="896" y="592" font-size="12" fill="#475569">· 缓存/闸门/对账 的开关与参数</text>
+    <text x="896" y="616" font-size="11.5" fill="#94a3b8">改配置不改代码</text>
+
+    <text x="112" y="680" font-size="12" fill="#64748b">读法：自上而下 = 一次请求的路由；自下而上 = 数据的来源。红线区（Redis）里的数字全部是"预计数"，绿线区（MySQL）才是真相。</text>
+  </svg>
+  </div>
+  <p class="cap">图 1 · 架构全景：4 层主干道 + 中间件职责分工（端口均为本机实测运行端口）</p>
+</section>
+
+<!-- ================= ② 业务全流程 ================= -->
+<section id="biz">
+  <h2><span class="no">2</span>业务全流程：一名学生的一天</h2>
+  <p class="sub">四个阶段：会话启动 → 浏览（读）→ 提交（写）→ 事后（异步与撤销）。每个阶段标注了它背后的机制，热路径（写）全部指向第 3 节的大图。</p>
+
+  <div class="canvas">
+  <svg viewBox="0 0 1160 660" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC, Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+      </marker>
+    </defs>
+
+    <!-- 阶段 1 -->
+    <rect x="20" y="20" width="260" height="470" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+    <rect x="20" y="20" width="260" height="44" rx="14" fill="#2563eb"/>
+    <rect x="20" y="46" width="260" height="18" fill="#2563eb"/>
+    <text x="40" y="49" font-size="14" font-weight="700" fill="#ffffff">① 会话启动</text>
+
+    <rect x="36" y="82" width="228" height="64" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="48" y="104" font-size="12.5" font-weight="700" fill="#0f172a">打开前端 :5173</text>
+    <text x="48" y="124" font-size="11.5" fill="#64748b">路由守卫检查登录态</text>
+    <text x="48" y="140" font-size="11.5" fill="#64748b">无 token → 跳 /login</text>
+
+    <rect x="36" y="160" width="228" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="48" y="182" font-size="12.5" font-weight="700" fill="#0f172a">登录 POST /api/auth/login</text>
+    <text x="48" y="202" font-size="11.5" fill="#64748b">网关放行 → campus-user 校验密码</text>
+    <text x="48" y="218" font-size="11.5" fill="#64748b">签发 JWT（有效期 24h）</text>
+    <text x="48" y="234" font-size="11.5" fill="#64748b">登录态写 Redis（可踢人/续期）</text>
+
+    <rect x="36" y="258" width="228" height="64" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="48" y="280" font-size="12.5" font-weight="700" fill="#0f172a">工作台概览</text>
+    <text x="48" y="300" font-size="11.5" fill="#64748b">/api/resource/stats/overview</text>
+    <text x="48" y="316" font-size="11.5" fill="#64748b">命中缓存 ≈ 1ms（未命中 25.6ms）</text>
+
+    <rect x="36" y="336" width="228" height="74" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="48" y="358" font-size="12.5" font-weight="700" fill="#059669">此后每个请求</text>
+    <text x="48" y="378" font-size="11.5" fill="#475569">都带 Bearer token</text>
+    <text x="48" y="394" font-size="11.5" fill="#475569">网关验签 → 服务取 UserContext</text>
+
+    <!-- 阶段 2 -->
+    <rect x="300" y="20" width="260" height="470" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+    <rect x="300" y="20" width="260" height="44" rx="14" fill="#7c3aed"/>
+    <rect x="300" y="46" width="260" height="18" fill="#7c3aed"/>
+    <text x="320" y="49" font-size="14" font-weight="700" fill="#ffffff">② 浏览（读路径）</text>
+
+    <rect x="316" y="82" width="228" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="328" y="104" font-size="12.5" font-weight="700" fill="#0f172a">资源列表（图书馆/场馆/讲座）</text>
+    <text x="328" y="124" font-size="11.5" fill="#64748b">/api/resource/list?type=…</text>
+    <text x="328" y="140" font-size="11.5" fill="#64748b">Cache-Aside + 提交后失效</text>
+    <text x="328" y="156" font-size="11.5" fill="#64748b">布隆过滤器挡"不存在的 id"（防穿透）</text>
+
+    <rect x="316" y="180" width="228" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="328" y="202" font-size="12.5" font-weight="700" fill="#0f172a">时段余量（热点 key）</text>
+    <text x="328" y="222" font-size="11.5" fill="#64748b">/api/resource/{id}/slots?date=…</text>
+    <text x="328" y="238" font-size="11.5" fill="#64748b">safeGet：互斥回源 + 双检（防击穿）</text>
+    <text x="328" y="254" font-size="11.5" fill="#64748b">未被抢到锁的请求 40ms 后重读</text>
+
+    <rect x="316" y="278" width="228" height="104" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
+    <text x="328" y="300" font-size="12.5" font-weight="700" fill="#5b21b6">选课页：教学班读模型</text>
+    <text x="328" y="320" font-size="11.5" fill="#475569">静态信息（600s）+ 动态余量 Hash（120s）</text>
+    <text x="328" y="336" font-size="11.5" fill="#475569">一次 pipeline 合并取回 → 3.05ms</text>
+    <text x="328" y="352" font-size="11.5" fill="#475569">miss 才回源重建（锁 + 双检）</text>
+    <text x="328" y="368" font-size="11.5" fill="#475569">30s 对账器自愈偏差</text>
+
+    <rect x="316" y="396" width="228" height="74" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="328" y="418" font-size="12.5" font-weight="700" fill="#b45309">"我的已选"不进缓存</text>
+    <text x="328" y="438" font-size="11.5" fill="#475569">每次实时轻查（防串号/防旧数据）</text>
+    <text x="328" y="454" font-size="11.5" fill="#475569">展示可以旧，判定必须新</text>
+
+    <!-- 阶段 3 -->
+    <rect x="580" y="20" width="260" height="470" rx="14" fill="#fef2f2" stroke="#fecaca"/>
+    <rect x="580" y="20" width="260" height="44" rx="14" fill="#dc2626"/>
+    <rect x="580" y="46" width="260" height="18" fill="#dc2626"/>
+    <text x="600" y="49" font-size="14" font-weight="700" fill="#ffffff">③ 提交（写路径 · 见第 3 节）</text>
+
+    <rect x="596" y="82" width="228" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="608" y="104" font-size="12.5" font-weight="700" fill="#0f172a">预约 POST /api/reservation/create</text>
+    <text x="608" y="124" font-size="11.5" fill="#64748b">幂等注解 → Redis 预扣（跨时间片全成或全败）</text>
+    <text x="608" y="140" font-size="11.5" fill="#64748b">→ 事务：位图冲突检测 → 条件更新占片</text>
+    <text x="608" y="156" font-size="11.5" fill="#64748b">→ 落单（同一事务）</text>
+
+    <rect x="596" y="180" width="228" height="64" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="608" y="202" font-size="12.5" font-weight="700" fill="#0f172a">讲座报名 /api/lecture/{id}/signup</text>
+    <text x="608" y="222" font-size="11.5" fill="#64748b">名额有限 → 同一条闸门链路</text>
+    <text x="608" y="238" font-size="11.5" fill="#64748b">成功后发站内信</text>
+
+    <rect x="596" y="258" width="228" height="104" rx="10" fill="#fef2f2" stroke="#fca5a5"/>
+    <text x="608" y="280" font-size="12.5" font-weight="700" fill="#b91c1c">选课 POST /api/course/select</text>
+    <text x="608" y="300" font-size="11.5" fill="#475569">合并 Lua 快路径：幂等 + 预扣 = 2 次往返</text>
+    <text x="608" y="316" font-size="11.5" fill="#475569">余量不足 → 40052（挡在 Redis，不占连接）</text>
+    <text x="608" y="332" font-size="11.5" fill="#475569">重复提交 → 40060；Redis 挂 → 降级直通</text>
+    <text x="608" y="348" font-size="11.5" fill="#475569">放行 → 事务落单（8 分片）</text>
+
+    <rect x="596" y="376" width="228" height="94" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="608" y="398" font-size="12.5" font-weight="700" fill="#059669">提交后（afterCommit）</text>
+    <text x="608" y="418" font-size="11.5" fill="#475569">余量读模型 HINCRBY ±1（不整键失效）</text>
+    <text x="608" y="434" font-size="11.5" fill="#475569">概览缓存失效</text>
+    <text x="608" y="450" font-size="11.5" fill="#475569">发 MQ 站内信</text>
+
+    <!-- 阶段 4 -->
+    <rect x="860" y="20" width="280" height="470" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+    <rect x="860" y="20" width="280" height="44" rx="14" fill="#059669"/>
+    <rect x="860" y="46" width="280" height="18" fill="#059669"/>
+    <text x="880" y="49" font-size="14" font-weight="700" fill="#ffffff">④ 事后（异步与撤销）</text>
+
+    <rect x="876" y="82" width="248" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="888" y="104" font-size="12.5" font-weight="700" fill="#0f172a">站内信送达（MQ 异步）</text>
+    <text x="888" y="124" font-size="11.5" fill="#64748b">铃铛未读数 / 抽屉列表</text>
+    <text x="888" y="140" font-size="11.5" fill="#64748b">消费者批量拉取（20/批）→ 一次 ACK</text>
+    <text x="888" y="156" font-size="11.5" fill="#64748b">逐条幂等（重复只落一条）</text>
+
+    <rect x="876" y="180" width="248" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="888" y="202" font-size="12.5" font-weight="700" fill="#0f172a">签到 / 爽约兜底</text>
+    <text x="888" y="222" font-size="11.5" fill="#64748b">POST /api/reservation/{id}/checkin</text>
+    <text x="888" y="238" font-size="11.5" fill="#64748b">延时消息 + Scheduler 双保险</text>
+    <text x="888" y="254" font-size="11.5" fill="#64748b">超时未签到 → 状态流转 + 释放资源</text>
+
+    <rect x="876" y="278" width="248" height="84" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="888" y="300" font-size="12.5" font-weight="700" fill="#0f172a">取消预约 / 退课</text>
+    <text x="888" y="320" font-size="11.5" fill="#64748b">同一事务：释放库存 + 清位图 + 状态流转</text>
+    <text x="888" y="336" font-size="11.5" fill="#64748b">选课 drop：余量 HINCRBY +1（下一位可抢）</text>
+    <text x="888" y="352" font-size="11.5" fill="#64748b">幂等键一并清理</text>
+
+    <rect x="876" y="376" width="248" height="94" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="888" y="398" font-size="12.5" font-weight="700" fill="#1d4ed8">观测与自愈（随时在跑）</text>
+    <text x="888" y="418" font-size="11.5" fill="#475569">指标计数：命中/拦截/回补/降级…</text>
+    <text x="888" y="434" font-size="11.5" fill="#475569">对账器：Redis 预计数 vs DB 真值（30s）</text>
+    <text x="888" y="450" font-size="11.5" fill="#475569">齐射观测台 + HTML 战报</text>
+
+    <!-- 阶段箭头 -->
+    <path d="M 284 260 L 296 260" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+    <path d="M 564 260 L 576 260" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+    <path d="M 844 260 L 856 260" stroke="#94a3b8" stroke-width="2" marker-end="url(#ar2)"/>
+
+    <!-- 底部贯穿带 -->
+    <rect x="20" y="510" width="1120" height="120" rx="14" fill="#0f172a"/>
+    <text x="44" y="540" font-size="13.5" font-weight="700" fill="#e2e8f0">贯穿全程的七件套（每一层都可能用到，按需生效）</text>
+    <text x="44" y="566" font-size="12.5" fill="#cbd5e1">① 网关鉴权（JWT 验签） ② 接口幂等（两态 Lua，重复点击无害） ③ 分布式锁（防击穿回源 / 占座互斥 / 对账互斥）</text>
+    <text x="44" y="588" font-size="12.5" fill="#cbd5e1">④ 缓存与读模型（列表 / 时段 / 教学班） ⑤ 预扣闸门（热路径前置挡量） ⑥ MQ 异步（站内信 / 延时） ⑦ 观测指标（每层都可量化）</text>
+    <text x="44" y="614" font-size="12" fill="#94a3b8">原则：展示可以旧、判定必须新；每层可降级，只有 MySQL 真相层不可绕过。</text>
+  </svg>
+  </div>
+  <p class="cap">图 2 · 业务全流程：学生的一天（4 阶段 × 关键机制）+ 贯穿七件套</p>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="mini"><h4>📚 图书馆座位</h4><p>选时段 → 预扣闸门 → 位图冲突检测（同一用户同一时段只能占一处）→ 条件更新占片 → 签到 / 超时释放。</p></div>
+    <div class="mini"><h4>🏸 体育场馆</h4><p>按时段预约，链路与图书馆一致（同一套 Reservation 核心），并发下同样先 Redis 预扣再进事务。</p></div>
+    <div class="mini"><h4>🎤 讲座</h4><p>名额制报名 <code>/signup</code>：名额即容量，走闸门挡量；成功后 MQ 异步送站内信。</p></div>
+    <div class="mini"><h4>📖 选课</h4><p>本项目压力最大的一条线：读模型（静态+余量分离）+ 合并 Lua 闸门 + 8 分片落单 + 位图/唯一索引兜底。</p></div>
+  </div>
+</section>
+
+<!-- ================= ③ 高并发专项 ================= -->
+<section id="hc">
+  <h2><span class="no">3</span>高并发专项图：万人同抢一课的那一秒</h2>
+  <p class="sub">这是全文的核心图。自上而下是一次"齐射"的完整旅程：<b>入口三道闸 → 读写分叉 → 真相层 → 异步 → 观测</b>。每个分叉点都标了实测数字。</p>
+
+  <div class="canvas">
+  <svg viewBox="0 0 1160 1250" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC, Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+      </marker>
+      <marker id="ar3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/>
+      </marker>
+      <marker id="ar3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+      </marker>
+    </defs>
+
+    <!-- 起点 -->
+    <rect x="230" y="14" width="700" height="52" rx="12" fill="#0f172a"/>
+    <text x="580" y="38" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">10,000 名学生同一秒点击「选课」（9,897 个 token 全部到达网关）</text>
+    <text x="580" y="56" font-size="11.5" fill="#94a3b8" text-anchor="middle">压测方式：loadtest.py 工作池齐射（800 连接预热后同时开火，发起窗口 2.98s）</text>
+
+    <path d="M 580 66 L 580 92" stroke="#475569" stroke-width="2" marker-end="url(#ar3)"/>
+
+    <!-- 第 1 关：鉴权 -->
+    <rect x="300" y="96" width="560" height="46" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="320" y="118" font-size="13" font-weight="700" fill="#1e3a8a">第 1 关 · 网关 JWT 验签（campus-gateway :9080）</text>
+    <text x="320" y="135" font-size="11.5" fill="#475569">无 token / 过期 → 40100，请求不进服务（省掉后面所有开销）</text>
+
+    <path d="M 580 142 L 580 168" stroke="#475569" stroke-width="2" marker-end="url(#ar3)"/>
+
+    <!-- 第 2 关：限流 -->
+    <rect x="300" y="172" width="560" height="56" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+    <text x="320" y="194" font-size="13" font-weight="700" fill="#b45309">第 2 关 · Sentinel 限流（选课接口专用规则，40055）</text>
+    <text x="320" y="212" font-size="11.5" fill="#475569">阈值可运行时热调（20 ↔ 100000，无需重启）；齐射前放开，避免"限流先把人挡光"看不到闸门真实挡量</text>
+
+    <path d="M 580 228 L 580 254" stroke="#475569" stroke-width="2" marker-end="url(#ar3)"/>
+
+    <!-- 第 3 关：幂等 -->
+    <rect x="300" y="258" width="560" height="56" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
+    <text x="320" y="280" font-size="13" font-weight="700" fill="#5b21b6">第 3 关 · 接口幂等（两态 Lua：CONSUMING / CONSUMED，40060）</text>
+    <text x="320" y="298" font-size="11.5" fill="#475569">同一用户同一教学班重复提交 → 直接挡回；成功提交的第二次点击同样被识别（不会重复占额）</text>
+
+    <!-- 分叉 -->
+    <path d="M 580 314 L 580 330" stroke="#475569" stroke-width="2"/>
+    <path d="M 300 330 L 860 330" stroke="#475569" stroke-width="2"/>
+    <path d="M 300 330 L 300 356" stroke="#2563eb" stroke-width="2" marker-end="url(#ar3)"/>
+    <path d="M 860 330 L 860 356" stroke="#dc2626" stroke-width="2" marker-end="url(#ar3r)"/>
+    <text x="270" y="350" font-size="12.5" font-weight="700" fill="#2563eb" text-anchor="end">读路径（查余量）</text>
+    <text x="880" y="350" font-size="12.5" font-weight="700" fill="#dc2626">写路径（提交选课）</text>
+
+    <!-- ============ 左：读路径 ============ -->
+    <rect x="60" y="360" width="480" height="330" rx="14" fill="#eff6ff" stroke="#bfdbfe"/>
+    <text x="80" y="386" font-size="13.5" font-weight="700" fill="#1e3a8a">读路径 · 让绝大多数读不碰数据库</text>
+
+    <rect x="80" y="398" width="440" height="72" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="94" y="420" font-size="12.5" font-weight="700" fill="#0f172a">① 一次 pipeline 合并读（教学班读模型）</text>
+    <text x="94" y="440" font-size="11.5" fill="#475569">静态信息（班级/教师/时间，TTL 600s） + 动态余量 Hash（field=班级, TTL 120s）</text>
+    <text x="94" y="458" font-size="11.5" fill="#059669">实测：写后立即可见 3.05ms / 0 次回源（拆分前 21.4ms / 40 次回源）</text>
+
+    <rect x="80" y="480" width="440" height="66" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="94" y="502" font-size="12.5" font-weight="700" fill="#0f172a">② 未命中 → 互斥重建（锁 + 双检）</text>
+    <text x="94" y="522" font-size="11.5" fill="#475569">只按 DB 真值重建；Hash 字段不完整（缺班级）也触发重建</text>
+    <text x="94" y="538" font-size="11.5" fill="#475569">抢不到锁的请求 40ms 后重读（不排队、不空转）</text>
+
+    <rect x="80" y="556" width="440" height="66" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="94" y="578" font-size="12.5" font-weight="700" fill="#0f172a">③ 写后增量维护 + 30s 对账自愈</text>
+    <text x="94" y="598" font-size="11.5" fill="#475569">提交成功后 HINCRBY ±1（存在才加，避免残缺 Hash）；不整键失效、不再 SCAN</text>
+    <text x="94" y="614" font-size="11.5" fill="#475569">对账器逐字段纠偏 / 删幽灵字段 / 整课无班级则删 key（启动也跑一次）</text>
+
+    <rect x="80" y="632" width="440" height="46" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="94" y="652" font-size="12" fill="#065f46">诚实边界：增量与对账并发的极端窗口，显示值最坏 ±1 —— 展示读模型，不影响闸门与 DB 真相。</text>
+    <text x="94" y="670" font-size="11.5" fill="#059669">读容量实测：概览 4,257 QPS · 时段 3,423 · 列表 3,524（同机，200 并发后饱和）</text>
+
+    <!-- ============ 右：写路径 ============ -->
+    <rect x="620" y="360" width="480" height="330" rx="14" fill="#fef2f2" stroke="#fecaca"/>
+    <text x="640" y="386" font-size="13.5" font-weight="700" fill="#b91c1c">写路径 · 99.9% 在 Redis 层被挡回</text>
+
+    <rect x="640" y="398" width="440" height="106" rx="10" fill="#ffffff" stroke="#fca5a5"/>
+    <text x="654" y="420" font-size="12.5" font-weight="700" fill="#0f172a">① 合并 Lua 快路径（幂等 + 预扣 = 一次原子，2 次往返）</text>
+    <text x="654" y="440" font-size="11.5" fill="#475569">脚本内顺序与原慢路径完全一致：幂等判定 → 余量校验 → 置 CONSUMING → DECRBY</text>
+    <text x="654" y="458" font-size="11.5" fill="#475569">FAST_FULL（余量不足）→ 40052 <tspan fill="#dc2626" font-weight="700">实测 9,887 个在这一层被挡</tspan></text>
+    <text x="654" y="476" font-size="11.5" fill="#475569">FAST_DUP_*（已提交/提交中）→ 40060 ｜ FAST_NOT_INIT → 转慢路径初始化</text>
+    <text x="654" y="494" font-size="11.5" fill="#475569">FAST_PASS → 放行 ｜ Redis 异常 → 降级直通（业务不中断）</text>
+
+    <rect x="640" y="512" width="440" height="66" rx="10" fill="#ffffff" stroke="#fca5a5"/>
+    <text x="654" y="534" font-size="12.5" font-weight="700" fill="#0f172a">② 慢路径：先占位再扣减（冷启动 / 计数器过期）</text>
+    <text x="654" y="554" font-size="11.5" fill="#475569">幂等占位 → ensureThenDeduct：按 DB 真值回填计数器 → 再扣</text>
+    <text x="654" y="570" font-size="11.5" fill="#475569">失败一律回补 INCRBY + 释放幂等标记（宁可不卖，也不错卖）</text>
+
+    <rect x="640" y="586" width="440" height="66" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="654" y="608" font-size="12.5" font-weight="700" fill="#065f46">③ 闸门放在事务之外（关键取舍）</text>
+    <text x="654" y="628" font-size="11.5" fill="#475569">@Transactional 一进就借连接池；被挡的 9,887 个请求<tspan font-weight="700" fill="#b91c1c">从不借连接</tspan></text>
+    <text x="654" y="644" font-size="11.5" fill="#475569">→ 连接池 128 全程安全，数据库只面对 10 个放行请求</text>
+
+    <rect x="640" y="660" width="440" height="18" rx="9" fill="#fef2f2"/>
+    <text x="660" y="673" font-size="11.5" fill="#dc2626" font-weight="700">结论：10,000 → 9,887 挡回 + 10 成交 + 0 异常</text>
+
+    <!-- 汇聚 -->
+    <path d="M 300 690 L 300 716 L 580 716" stroke="#475569" stroke-width="2" fill="none"/>
+    <path d="M 860 690 L 860 716 L 580 716" stroke="#475569" stroke-width="2" fill="none"/>
+    <path d="M 580 716 L 580 740" stroke="#059669" stroke-width="2.5" marker-end="url(#ar3g)"/>
+    <text x="596" y="734" font-size="12" fill="#059669" font-weight="700">只有 10 个请求走到这里</text>
+
+    <!-- 真相层 -->
+    <rect x="150" y="744" width="860" height="150" rx="14" fill="#ecfdf5" stroke="#6ee7b7"/>
+    <text x="170" y="770" font-size="13.5" font-weight="700" fill="#065f46">真相层 · MySQL 8 分片（事务内四道防线，任何一层失效都还有下一层）</text>
+    <rect x="170" y="782" width="196" height="96" rx="10" fill="#ffffff" stroke="#a7f3d0"/>
+    <text x="184" y="804" font-size="12.5" font-weight="700" fill="#0f172a">① 行锁</text>
+    <text x="184" y="824" font-size="11.5" fill="#475569">用户维度加锁，</text>
+    <text x="184" y="840" font-size="11.5" fill="#475569">串行化同一人的并发提交</text>
+    <text x="184" y="862" font-size="11.5" fill="#94a3b8">SELECT … FOR UPDATE</text>
+
+    <rect x="382" y="782" width="196" height="96" rx="10" fill="#ffffff" stroke="#a7f3d0"/>
+    <text x="396" y="804" font-size="12.5" font-weight="700" fill="#0f172a">② 条件更新（核心）</text>
+    <text x="396" y="824" font-size="11.5" fill="#475569">UPDATE … SET selected=selected+1</text>
+    <text x="396" y="840" font-size="11.5" fill="#475569">WHERE selected &lt; capacity</text>
+    <text x="396" y="862" font-size="11.5" fill="#94a3b8">影响行数=0 → 回滚（不超卖）</text>
+
+    <rect x="594" y="782" width="196" height="96" rx="10" fill="#ffffff" stroke="#a7f3d0"/>
+    <text x="608" y="804" font-size="12.5" font-weight="700" fill="#0f172a">③ 唯一索引</text>
+    <text x="608" y="824" font-size="11.5" fill="#475569">(用户, 课程/班级) 唯一</text>
+    <text x="608" y="840" font-size="11.5" fill="#475569">重复插入直接 DB 层拒绝</text>
+    <text x="608" y="862" font-size="11.5" fill="#94a3b8">最后一道物理防线</text>
+
+    <rect x="806" y="782" width="196" height="96" rx="10" fill="#ffffff" stroke="#a7f3d0"/>
+    <text x="820" y="804" font-size="12.5" font-weight="700" fill="#0f172a">④ 位图</text>
+    <text x="820" y="824" font-size="11.5" fill="#475569">用户时间占用位图：</text>
+    <text x="820" y="840" font-size="11.5" fill="#475569">检测/记录时间冲突</text>
+    <text x="820" y="862" font-size="11.5" fill="#94a3b8">预约链路主用，选课兜底</text>
+
+    <path d="M 580 894 L 580 918" stroke="#059669" stroke-width="2.5" marker-end="url(#ar3g)"/>
+
+    <!-- 提交后 -->
+    <rect x="150" y="922" width="860" height="82" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="170" y="948" font-size="13" font-weight="700" fill="#0f172a">提交后（afterCommit 钩子）——把"真相"同步给"展示"和"下游"</text>
+    <rect x="170" y="958" width="270" height="36" rx="9" fill="#fff" stroke="#cbd5e1"/>
+    <text x="184" y="975" font-size="11.5" fill="#475569">余量读模型 HINCRBY ±1（实测 +10）</text>
+    <text x="184" y="989" font-size="11" fill="#94a3b8">提交成功即"写后可见"</text>
+    <rect x="452" y="958" width="270" height="36" rx="9" fill="#fff" stroke="#cbd5e1"/>
+    <text x="466" y="975" font-size="11.5" fill="#475569">概览缓存失效（下次读重建）</text>
+    <text x="466" y="989" font-size="11" fill="#94a3b8">写后失效，不做整表 SCAN</text>
+    <rect x="734" y="958" width="268" height="36" rx="9" fill="#fff" stroke="#cbd5e1"/>
+    <text x="748" y="975" font-size="11.5" fill="#475569">发 MQ 站内信（异步，不阻塞响应）</text>
+    <text x="748" y="989" font-size="11" fill="#94a3b8">失败不影响选课结果</text>
+
+    <path d="M 580 1004 L 580 1028" stroke="#7c3aed" stroke-width="2" marker-end="url(#ar3)"/>
+
+    <!-- 异步层 -->
+    <rect x="150" y="1032" width="860" height="76" rx="14" fill="#f5f3ff" stroke="#ddd6fe"/>
+    <text x="170" y="1058" font-size="13" font-weight="700" fill="#5b21b6">异步层 · RocketMQ（消费者批量 20 条 / 批，一次 ACK）</text>
+    <text x="170" y="1080" font-size="11.5" fill="#475569">逐条两态幂等（重复投递只落一条）· 失败整批 RECONSUME_LATER · MQ 不可用不阻断服务启动 · 延时消息做超时兜底</text>
+    <text x="170" y="1098" font-size="11.5" fill="#94a3b8">实测：50 条站内信 → 4 批消费（max 20 / avg 10.2）</text>
+
+    <path d="M 580 1108 L 580 1132" stroke="#475569" stroke-width="2" marker-end="url(#ar3)"/>
+
+    <!-- 观测层 -->
+    <rect x="150" y="1136" width="860" height="96" rx="14" fill="#0f172a"/>
+    <text x="170" y="1162" font-size="13" font-weight="700" fill="#e2e8f0">观测层 · 每一层都可量化（否则"高并发"只是形容词）</text>
+    <text x="170" y="1186" font-size="11.5" fill="#cbd5e1">指标：拦截 / 放行 / 回补 / 降级 / 快慢路径 / 余量增量 / 重建次数 / 限流拦截 …（逐项累加）</text>
+    <text x="170" y="1206" font-size="11.5" fill="#cbd5e1">看板：🔭 齐射观测台（实时曲线 + 打点战报）· 缓存/预扣/并发 三个专项页 · HTML 战报自动生成</text>
+    <text x="170" y="1224" font-size="11.5" fill="#94a3b8">判读口诀：拦截 + 放行 = 到达（算术闭合）· 回补 = 0 · 降级 = 0 · 余量增量 = 成功数</text>
+  </svg>
+  </div>
+  <p class="cap">图 3 · 高并发专项：万人齐射的完整旅程（入口三闸 → 读写分叉 → 真相四防线 → 异步 → 观测），数字均为本机实测</p>
+
+  <div class="grid g4" style="margin-top:14px">
+    <div class="mini"><h4>📉 读侧收益</h4><p>读模型拆分让"写后可见"从 <b class="num">21.4ms / 40 次回源</b> 降到 <b class="num">3.05ms / 0 次回源</b>；读容量 ~4.2k QPS。</p></div>
+    <div class="mini"><h4>⚡ 写侧收益</h4><p>合并 Lua 把成功路径从 <b class="num">4 次</b> Redis 往返压到 <b class="num">2 次</b>（≈1.85×）；写入口吸收 <b class="num">~3.3k</b> req/s。</p></div>
+    <div class="mini"><h4>🛡 挡量效果</h4><p>10,000 人 → <b class="num">9,887</b> 在 Redis 被挡（40052），只有 <b class="num">10</b> 个占用数据库连接。</p></div>
+    <div class="mini"><h4>✅ 正确性</h4><p>恰好 10 成交、余票 -10 分毫不差、0 异常、0 回补、0 降级；端到端 P95 <b class="num">469ms</b>。</p></div>
+  </div>
+</section>
+
+<!-- ================= 返回码速查 ================= -->
+<section id="codes">
+  <h2><span class="no">4</span>返回码速查：每个拒绝发生在哪一层</h2>
+  <p class="sub">用户看到的是一句提示，系统里对应的是"在哪一层、被谁、为什么拦下"。</p>
+  <table>
+    <thead><tr><th>返回码</th><th>含义</th><th>拦截位置</th><th>成本</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill p-blue">40100</span></td><td>未登录 / token 失效</td><td>网关 JWT 验签</td><td>最低（不进服务）</td></tr>
+      <tr><td><span class="pill p-amber">40055</span></td><td>触发限流</td><td>Sentinel（服务入口）</td><td>极低（内存判定）</td></tr>
+      <tr><td><span class="pill p-violet">40060</span></td><td>重复提交 / 正在处理中</td><td>合并 Lua 快路径 或 幂等切面</td><td>1 次 Redis 往返</td></tr>
+      <tr><td><span class="pill p-red">40052</span></td><td>余量不足 / 名额已满</td><td>预扣闸门（Redis Lua）</td><td>1~2 次 Redis 往返，<b>不借数据库连接</b></td></tr>
+      <tr><td><span class="pill p-green">0</span></td><td>成功</td><td>事务提交 + 提交后增量 + MQ</td><td>走完全链路</td></tr>
+    </tbody>
+  </table>
+  <div class="note">齐射实测的分布：<b>40052 × 9,887</b>，<b>0（成功）× 10</b>，其余码为 0 —— 说明"挡量"这件事完整发生在 Redis 层，数据库只处理了它必须处理的 10 个请求。</div>
+</section>
+
+<!-- ================= 设计取舍 ================= -->
+<section id="trade">
+  <h2><span class="no">5</span>五个设计取舍（为什么这么做）</h2>
+  <p class="sub">这些不是"最佳实践"清单，而是本项目在真实约束下的选择，每条都有实测支撑。</p>
+  <table>
+    <thead><tr><th>取舍</th><th>选择</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>Redis 与 MySQL 谁是真相</td><td><b>MySQL 是真相，Redis 是预计数</b></td><td>Redis 挂了降级直通、计数器漂移 30s 对账纠回；正确性从不押在缓存上（与"Redis 即真相"的 12306 学习版相反，因为抢课要求"恰好"，且单机可承受）</td></tr>
+      <tr><td>闸门放在事务前还是事务内</td><td><b>事务之外</b></td><td>@Transactional 一进就借连接；挡在事务外，9,887 个被拒请求从不占连接池 → 连接池 128 全程安全</td></tr>
+      <tr><td>超载时排队还是快速拒绝</td><td><b>快速拒绝（40052）</b></td><td>选课可重试，"告诉你没戏"比"让所有人一起死"更负责；对比 12306 学习版 V1 的"整列车锁排队"（30 并发 → 4.2 单/s、P99 7.2s）</td></tr>
+      <tr><td>展示与判定能不能用同一份数据</td><td><b>可以，但标准不同</b></td><td>展示（余量列）允许旧 100ms 级、允许 ±1 偏差；判定（放不放行）必须新鲜原子唯一 —— 所以余量走读模型，闸门走 Lua</td></tr>
+      <tr><td>某层挂了怎么办</td><td><b>每层可降级，真相层不可绕过</b></td><td>限流/幂等/缓存/闸门全失效时，MySQL 条件更新 + 唯一索引仍保证不超卖（最坏情况是多打数据库，不是错卖）</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ================= 复现与证据 ================= -->
+<section id="repro">
+  <h2><span class="no">6</span>复现路径与证据</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="h">🖥 看界面（前端）</div>
+      <ol>
+        <li>浏览器打开 <code>http://localhost:5173</code></li>
+        <li>业务线：工作台 → 图书馆座位 → 选课（观察余量变化）</li>
+        <li>观测线：「🛠 工程演示 → 🔭 齐射观测台」</li>
+      </ol>
+    </div>
+    <div class="step">
+      <div class="h">🎯 打点观察（观测台）</div>
+      <ol>
+        <li>先「放开限流（100000）」，否则 40055 会先把人挡光</li>
+        <li>点「📍 打点」→ 命令行跑齐射 → 回来点「📋 战报」</li>
+        <li>看判读：拦截+放行=到达 / 回补 0 / 降级 0</li>
+      </ol>
+    </div>
+    <div class="step">
+      <div class="h">⌨️ 命令复现（压测）</div>
+      <ol>
+        <li><code>python tools/loadtest.py read</code>（读容量）</li>
+        <li><code>python tools/loadtest.py verify --users 10000</code></li>
+        <li>自动生成 <code>tools/reports/verify-report-*.html</code></li>
+      </ol>
+    </div>
+    <div class="step">
+      <div class="h">🧩 分项实验（演示页）</div>
+      <ol>
+        <li>预扣闸门页：看计数器偏差与回补</li>
+        <li>缓存页：教学班读模型 A/B 对照 + 对账</li>
+        <li>并发控制页：锁 / 幂等 / 合并 Lua 对照</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:16px">
+    <b>证据索引</b>：
+    <a href="11-高并发处理全流程图解.html">docs/11 高并发全流程（逐关讲解 + 小林coding 对照）</a> ·
+    <a href="13-读模型与快路径升级（阶段 19）.md">docs/13 读模型与快路径升级</a> ·
+    <a href="10-并发能力测试指南.md">docs/10 并发能力测试指南（含万人齐射）</a> ·
+    <a href="08-高并发与分布式图解.html">docs/08 阶段 0~15 图解</a> ·
+    <a href="06-并发压测报告.md">docs/06 压测报告</a>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

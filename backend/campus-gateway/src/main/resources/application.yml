@@ -1,0 +1,48 @@
+server:
+  port: 9080
+
+spring:
+  application:
+    name: campus-gateway
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: campus123456
+      timeout: 3s
+      lettuce:
+        shutdown-timeout: 100ms
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+    gateway:
+      # 路由：按路径前缀分流（lb:// = 从 Nacos 解析实例 + 负载均衡）
+      routes:
+        # 阶段 20：名额信号 SSE 长连接——独立路由 + response-timeout: -1，
+        # 防止未来给全局加 httpclient 超时配置时把长连接截断（本路由必须排在 /api/course/** 之前）
+        - id: campus-stock-sse
+          uri: lb://campus-service
+          predicates:
+            - Path=/api/course/stock/stream
+          metadata:
+            response-timeout: -1
+        - id: campus-user
+          uri: lb://campus-user
+          predicates:
+            - Path=/api/auth/**,/api/user/**
+        - id: campus-service
+          uri: lb://campus-service
+          predicates:
+            - Path=/api/health,/api/resource/**,/api/reservation/**,/api/library/**,/api/venue/**,/api/lecture/**,/api/course/**,/api/stress/**,/api/mq/**,/api/sharding/**,/api/cache/**,/api/prededuct/**,/api/concurrency/**
+
+campus:
+  jwt:
+    # 与 user/service 一致的密钥（网关负责第一道校验：签名+有效期）
+    secret: UEEc7i41Rq75WYgIiBk7C1HHIpA6kO5SjCF7v3sBl6gQftttH6qJeWU877jYgh-6IYG9vn9K9wGbaGgn7IaHJA
+    issuer: campus-platform
+    expire-seconds: 86400
+
+logging:
+  level:
+    com.campus: info

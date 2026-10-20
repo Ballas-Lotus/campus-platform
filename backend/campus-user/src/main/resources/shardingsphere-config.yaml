@@ -1,0 +1,203 @@
+# ============================================================================
+# 阶段 14 · ShardingSphere-JDBC 配置（分库分表 + 列加密）
+#
+# 布局：2 库 × 4 表 = 8 分片（campus_0 / campus_1，同 MySQL 实例 3308）
+#   shard = MOD(分片键, 8)；库 = shard / 4；表 = shard % 4
+#   —— 与 resources/database/migrate-sharding.sql 的 MOD 公式严格一致；
+#      自定义算法类见 campus-common com.campus.framework.sharding.*
+#
+# 分片键：
+#   t_reservation         user_id（+ reservation_no 基因法）——复合算法
+#   t_resource_slot       resource_id
+#   用户维度表（occupancy/quota/selection/notification）  user_id
+#   t_user                id（= user_id 同值域）
+#   索引表（phone/mail/student_no）  自身（字符串 CRC32，与 MySQL CRC32() 一致）
+# 广播表：t_resource / t_lecture / t_venue / t_library_area / t_course / t_course_class
+# 列加密：t_user.phone / email（AES/ECB/PKCS5，Base64；密钥须与迁移脚本同级一致）
+#
+# 注意：本文件在 campus-service 与 campus-user 各存一份（内容一致）——
+#       两服务共享同一批逻辑表，分片规则必须完全相同才能看到同一份数据。
+# ============================================================================
+dataSources:
+  ds_0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3308/campus_0?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: root
+    password: campus123456
+    maximumPoolSize: 128
+    minimumIdle: 2
+    connectionTimeout: 5000
+  ds_1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.cj.jdbc.Driver
+    jdbcUrl: jdbc:mysql://127.0.0.1:3308/campus_1?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: root
+    password: campus123456
+    maximumPoolSize: 128
+    minimumIdle: 2
+    connectionTimeout: 5000
+
+rules:
+  - !SHARDING
+    tables:
+      # ---- 预约表：复合分片（user_id 或 单号基因，二选一路由）----
+      t_reservation:
+        actualDataNodes: ds_${0..1}.t_reservation_${0..3}
+        databaseStrategy:
+          complex:
+            shardingColumns: user_id,reservation_no
+            shardingAlgorithmName: reservation_db_complex
+        tableStrategy:
+          complex:
+            shardingColumns: user_id,reservation_no
+            shardingAlgorithmName: reservation_table_complex
+      # ---- 时间片：按 resource_id ----
+      t_resource_slot:
+        actualDataNodes: ds_${0..1}.t_resource_slot_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: resource_id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: resource_id
+            shardingAlgorithmName: campus_mod_table
+      # ---- 用户维度表（同 user_id 规则；与 t_reservation 同用户同分片）----
+      t_user_time_occupancy:
+        actualDataNodes: ds_${0..1}.t_user_time_occupancy_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_table
+      t_user_quota:
+        actualDataNodes: ds_${0..1}.t_user_quota_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_table
+      t_course_selection:
+        actualDataNodes: ds_${0..1}.t_course_selection_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_table
+      t_notification:
+        actualDataNodes: ds_${0..1}.t_notification_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: user_id
+            shardingAlgorithmName: campus_mod_table
+      # ---- 用户表：按主键 id（与 user_id 同值域 → 同用户数据同分片）----
+      t_user:
+        actualDataNodes: ds_${0..1}.t_user_${0..3}
+        databaseStrategy:
+          standard:
+            shardingColumn: id
+            shardingAlgorithmName: campus_mod_db
+        tableStrategy:
+          standard:
+            shardingColumn: id
+            shardingAlgorithmName: campus_mod_table
+      # ---- 读扩散索引表：按自身（字符串 CRC32 分片，单分片点查）----
+      #      只做库级分片（每库一张全量表，10k 级小表）——单分片命中已达成，不再细分表
+      t_user_phone:
+        actualDataNodes: ds_${0..1}.t_user_phone
+        databaseStrategy:
+          standard:
+            shardingColumn: phone
+            shardingAlgorithmName: campus_mod_db
+      t_user_mail:
+        actualDataNodes: ds_${0..1}.t_user_mail
+        databaseStrategy:
+          standard:
+            shardingColumn: email
+            shardingAlgorithmName: campus_mod_db
+      t_user_student_no:
+        actualDataNodes: ds_${0..1}.t_user_student_no
+        databaseStrategy:
+          standard:
+            shardingColumn: student_no
+            shardingAlgorithmName: campus_mod_db
+    bindingTables:
+      - t_user_time_occupancy,t_user_quota,t_course_selection,t_notification
+    # 广播表：两库全量同构副本（小表、查询频繁；写操作在事务内双写）
+    # 注意：5.3.2 的 broadcastTables 是 !SHARDING 规则的一个字段（无独立 !BROADCAST 标签）
+    broadcastTables:
+      - t_resource
+      - t_lecture
+      - t_venue
+      - t_library_area
+      - t_course
+      - t_course_class
+    shardingAlgorithms:
+      campus_mod_db:
+        type: CLASS_BASED
+        props:
+          strategy: standard      # CLASS_BASED 包装器保留参数：接口类型（standard=单键/ complex=多键/ hint=强制）
+          level: db               # 本类参数：库层（分片号/4）
+          sharding-count: 8
+          table-sharding-count: 4
+          algorithmClassName: com.campus.framework.sharding.CampusStandardShardingAlgorithm
+      campus_mod_table:
+        type: CLASS_BASED
+        props:
+          strategy: standard
+          level: table            # 本类参数：表层（分片号%4）
+          sharding-count: 8
+          table-sharding-count: 4
+          algorithmClassName: com.campus.framework.sharding.CampusStandardShardingAlgorithm
+      reservation_db_complex:
+        type: CLASS_BASED
+        props:
+          strategy: complex
+          level: db
+          sharding-count: 8
+          table-sharding-count: 4
+          algorithmClassName: com.campus.framework.sharding.CampusReservationComplexAlgorithm
+      reservation_table_complex:
+        type: CLASS_BASED
+        props:
+          strategy: complex
+          level: table
+          sharding-count: 8
+          table-sharding-count: 4
+          algorithmClassName: com.campus.framework.sharding.CampusReservationComplexAlgorithm
+
+  # ---- 列加密：t_user 手机号/邮箱（AES；登录标识查询已改走明文索引表）----
+  - !ENCRYPT
+    tables:
+      t_user:
+        columns:
+          phone:
+            cipherColumn: phone
+            encryptorName: campus_aes
+          email:
+            cipherColumn: email
+            encryptorName: campus_aes
+        queryWithCipherColumn: true
+    encryptors:
+      campus_aes:
+        type: AES
+        props:
+          aes-key-value: campus-aes-2026-x
+
+props:
+  # 打印逻辑 SQL + 实际 SQL（验收"单分片命中"的日志证据；日志器名 ShardingSphere-SQL）
+  sql-show: true

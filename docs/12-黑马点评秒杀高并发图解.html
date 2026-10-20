@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>黑马点评 · 限时秒杀的高并发是怎么扛的？（图解 + 说人话 + 与本项目对照）</title>
+<!--
+  生成：2026-10-10
+  定位：学习/面试对照材料（外部项目笔记，非本项目阶段文档）
+  内容基于黑马程序员《Redis 分布式缓存实战》公开课程中优惠券秒杀章节的公开方案整理；
+  涉及本项目（campus-platform）的部分，见 docs/09、docs/11。
+  诚实说明：课程未给出严格压测数字；不同版本课程细节略有差异（早期用阻塞队列，后升级 Redis Stream）。
+-->
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#ffffff; --ink:#0f172a; --sub:#475569; --faint:#94a3b8;
+    --line:#e2e8f0; --blue:#2563eb; --blue-bg:#eff6ff; --green:#059669; --green-bg:#ecfdf5;
+    --violet:#7c3aed; --violet-bg:#f5f3ff; --amber:#d97706; --amber-bg:#fffbeb;
+    --red:#dc2626; --red-bg:#fef2f2; --code-bg:#0f172a; --code-ink:#e2e8f0;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,-apple-system,"Noto Sans SC",sans-serif;
+    line-height:1.75; font-size:15px;
+  }
+  code,pre,.mono{font-family:Consolas,"JetBrains Mono","Courier New",monospace}
+
+  .hero{
+    background:
+      radial-gradient(1200px 400px at 15% -10%, rgba(217,119,6,.32), transparent 60%),
+      radial-gradient(900px 380px at 85% 0%, rgba(124,58,237,.30), transparent 60%),
+      linear-gradient(150deg,#14100b 0%, #1c1508 55%, #120e08 100%);
+    color:#f3ede3; padding:54px 24px 46px; position:relative; overflow:hidden;
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0; opacity:.05;
+    background-image:linear-gradient(#fff 1px, transparent 1px),linear-gradient(90deg,#fff 1px, transparent 1px);
+    background-size:36px 36px; pointer-events:none;
+  }
+  .hero-inner{max-width:1060px;margin:0 auto;position:relative;z-index:1}
+  .hero .kicker{
+    display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#d8c9a8;
+    border:1px solid rgba(216,201,168,.35);border-radius:999px;padding:4px 14px;margin-bottom:18px;
+  }
+  .hero h1{margin:0 0 10px;font-size:33px;letter-spacing:.5px;line-height:1.4}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,#ffc266,#c9a1ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lead{margin:0;color:#d9cfba;max-width:880px;font-size:15px}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .badge{
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    color:#efe7d8;border-radius:10px;padding:8px 14px;font-size:13px;
+  }
+  .badge b{color:#fff;font-size:15px;margin-right:4px}
+  .badge .ok{color:#7ef0c0}
+  main{max-width:1060px;margin:0 auto;padding:26px 20px 80px}
+
+  nav.toc{
+    position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  nav.toc .row{max-width:1060px;margin:0 auto;padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap}
+  nav.toc a{
+    text-decoration:none;color:var(--sub);font-size:13px;padding:5px 12px;border-radius:8px;
+    border:1px solid transparent;transition:.15s;white-space:nowrap;
+  }
+  nav.toc a:hover{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+
+  section{margin-top:46px;scroll-margin-top:64px}
+  .sec-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .sec-no{
+    flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#d97706,#7c3aed);color:#fff;font-weight:700;font-size:15px;
+  }
+  .sec-head h2{margin:0;font-size:23px}
+  .sec-sub{color:var(--faint);font-size:13px;margin:2px 0 18px 46px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .card h3{margin:0 0 10px;font-size:16.5px}
+  .card h4{margin:16px 0 8px;font-size:14.5px}
+
+  .note{border-left:4px solid var(--blue);background:#f8fafc;border-radius:0 10px 10px 0;padding:12px 16px;font-size:13.5px;color:var(--sub);margin:12px 0}
+  .note.warn{border-color:var(--amber);background:var(--amber-bg)}
+  .note.danger{border-color:var(--red);background:var(--red-bg)}
+  .note.ok{border-color:var(--green);background:var(--green-bg)}
+  .note b{color:var(--ink)}
+
+  .say{background:#fffbeb;border:1px solid #fde68a;border-left:5px solid #f59e0b;border-radius:0 12px 12px 0;padding:13px 17px;margin:12px 0;font-size:13.8px;color:#713f12}
+  .say .st{display:block;font-size:11.5px;font-weight:800;letter-spacing:2px;color:#b45309;margin-bottom:4px}
+  .say b{color:#431407}
+
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:14px 16px;font-size:12.8px;line-height:1.7;overflow-x:auto;margin:10px 0}
+  pre .c{color:#7c8db5}
+  pre .k{color:#7ab8ff}
+  pre .s{color:#7ef0c0}
+  pre .r{color:#fca5a5}
+  code.inl{background:#eef2ff;color:#3730a3;padding:1px 7px;border-radius:6px;font-size:12.8px}
+
+  table{width:100%;border-collapse:collapse;font-size:13.2px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:#f1f5f9;color:var(--ink);font-weight:600}
+  tr:nth-child(even) td{background:#fafcff}
+  td .ok{color:var(--green);font-weight:700}
+  td .no{color:var(--red);font-weight:700}
+  td code{font-size:12.2px;background:#eef2ff;color:#3730a3;padding:0 5px;border-radius:5px}
+
+  .fig{background:#fbfdff;border:1px solid var(--line);border-radius:var(--radius);padding:8px 6px 2px;margin:14px 0}
+  .fig svg{width:100%;height:auto;display:block}
+  .fig .cap{text-align:center;font-size:12.5px;color:var(--faint);padding:6px 12px 10px}
+  svg text{font-family:"PingFang SC","Microsoft YaHei",Consolas,sans-serif}
+  .bx{fill:#fff;stroke:#cbd5e1;stroke-width:1.4}
+  .bx-blue{fill:#eff6ff;stroke:#93c5fd}
+  .bx-green{fill:#ecfdf5;stroke:#6ee7b7}
+  .bx-violet{fill:#f5f3ff;stroke:#c4b5fd}
+  .bx-amber{fill:#fffbeb;stroke:#fcd34d}
+  .bx-red{fill:#fef2f2;stroke:#fca5a5}
+  .bx-gray{fill:#f8fafc;stroke:#cbd5e1}
+  .bx-dark{fill:#0f172a;stroke:#334155}
+  .t{font-size:13.2px;fill:#0f172a;font-weight:600}
+  .t-b{font-size:13.2px;fill:#1d4ed8;font-weight:700}
+  .t-w{font-size:13.2px;fill:#f1f5f9;font-weight:700}
+  .t-r{font-size:13.2px;fill:#b91c1c;font-weight:700}
+  .t-g{font-size:13.2px;fill:#047857;font-weight:700}
+  .s{font-size:11.2px;fill:#64748b}
+  .s-w{font-size:11.2px;fill:#94a3b8}
+  .s-r{font-size:11.2px;fill:#dc2626}
+  .s-g{font-size:11.2px;fill:#059669}
+  .s-a{font-size:11.2px;fill:#b45309}
+  .cnt{font-size:13px;fill:#1d4ed8;font-weight:800}
+  .ln{stroke:#94a3b8;stroke-width:1.6;fill:none;marker-end:url(#arr)}
+  .ln-d{stroke:#94a3b8;stroke-width:1.4;fill:none;stroke-dasharray:5 4;marker-end:url(#arr)}
+  .ln-r{stroke:#dc2626;stroke-width:1.5;fill:none;marker-end:url(#arrR)}
+  .ln-g{stroke:#059669;stroke-width:1.5;fill:none;marker-end:url(#arrG)}
+  .ln-a{stroke:#d97706;stroke-width:1.5;fill:none;stroke-dasharray:5 4;marker-end:url(#arrA)}
+  .ln-v{stroke:#7c3aed;stroke-width:1.5;fill:none;marker-end:url(#arrV)}
+  .dia{fill:#fffbeb;stroke:#f59e0b;stroke-width:1.5}
+  .lb-r{font-size:11px;fill:#dc2626;font-weight:600}
+  .lb-g{font-size:11px;fill:#059669;font-weight:600}
+  .lb-a{font-size:11px;fill:#b45309;font-weight:600}
+
+  .script{background:#14100b;color:#e8dfcd;border-radius:var(--radius);padding:22px 26px;font-size:14px;line-height:2}
+  .script h3{margin:0 0 10px;color:#ffc266;font-size:16px}
+  .script b{color:#7ef0c0}
+  .script .warn2{color:#fcd34d}
+
+  footer{margin-top:60px;border-top:1px solid var(--line);padding-top:20px;color:var(--faint);font-size:13px}
+  footer a{color:var(--blue);text-decoration:none}
+  .file-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .file-links span{background:#f1f5f9;border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12.5px;color:var(--sub);font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#059669"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#d97706"/></marker>
+    <marker id="arrV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker>
+  </defs>
+</svg>
+
+<!-- ================= HERO ================= -->
+<div class="hero">
+  <div class="hero-inner">
+    <span class="kicker">🍗 黑马点评 · 优惠券秒杀章节 · 学习/面试对照材料</span>
+    <h1>限时秒杀的高并发，黑马点评是<em>怎么一层层扛下来</em>的？</h1>
+    <p class="lead">
+      秒杀是黑马点评里唯一同时踩中"<b>高并发写 + 分布式 + 数据一致性</b>"的场景——所以面试官最爱问。
+      这页按课程的真实演进路线讲：<b>全局唯一 ID → 超卖 → 一人一单 → 分布式锁 → Redis+Lua 预检 → Redis Stream 异步秒杀</b>。
+      每一站都是同样的配方：流程图 → 说人话 → 遗留了什么问题（= 下一站为什么存在）→ 与本项目对照。
+    </p>
+    <div class="badges">
+      <span class="badge">🧭 六代演进 <b>V1 数据库硬扛 → V6 异步秒杀</b></span>
+      <span class="badge">⚔️ 超卖 <b>乐观锁 CAS</b>（stock &gt; 0）</span>
+      <span class="badge">👤 一人一单 <b>synchronized → 分布式锁 → Lua</b></span>
+      <span class="badge">🔒 分布式锁 <b>SETNX → Lua → Redisson</b></span>
+      <span class="badge">📨 异步 <b>Redis Stream 消费者组 + ACK + pending</b></span>
+      <span class="badge">🆚 对照 <b>与本项目 campus-platform 同款武器清单</b></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= NAV ================= -->
+<nav class="toc">
+  <div class="row">
+    <a href="#why">🏫 为什么秒杀是含金量</a>
+    <a href="#hard">🎯 难在哪：三座大山</a>
+    <a href="#timeline">🧭 六代演进总览</a>
+    <a href="#id">🔢 全局唯一 ID</a>
+    <a href="#oversell">⚔️ 超卖与一人一单</a>
+    <a href="#lock">🔒 分布式锁</a>
+    <a href="#lua">🔥 Redis+Lua 预检</a>
+    <a href="#stream">📨 异步秒杀 Stream</a>
+    <a href="#vs">🗺️ 全链路对照</a>
+    <a href="#table">⚖️ 武器对照表</a>
+    <a href="#interview">🎤 面试话术</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ================= 1. 为什么含金量 ================= -->
+<section id="why">
+  <div class="sec-head"><div class="sec-no">1</div><h2>黑马点评是什么？为什么秒杀是它的"含金量重点"</h2></div>
+  <p class="sec-sub">一句话：一个拿 Redis 全家桶当主角的实战项目，而秒杀章节是唯一把"高并发 + 分布式"完整串起来的地方。</p>
+
+  <div class="card">
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      黑马点评整个项目像一座"Redis 兵器库"：短信登录用 Redis 代替 Session（共享登录态）、查商户先过缓存（缓存三兄弟）、
+      签到用 BitMap、UV 统计用 HyperLogLog、附近商户用 GEO……但这些都是<b>读多写少的"兵器展示"</b>。
+      只有<b>优惠券秒杀</b>是真刀真枪的<b>高并发写</b>——有限库存、瞬时流量、一个人只能买一份、还不能超卖。
+      所以面试官问黑马点评，八成先问秒杀。
+    </div>
+
+    <h4>秒杀章节覆盖的完整技能链（面试高频考点）</h4>
+    <table>
+      <tr><th style="width:22%">环节</th><th style="width:34%">课程方案</th><th>面试考点</th></tr>
+      <tr><td>全局唯一 ID</td><td>Redis <code>INCR</code> 拼时间戳（1+31+32 位）</td><td>为什么不用数据库自增？分库分表怎么办？</td></tr>
+      <tr><td>防超卖</td><td>乐观锁 CAS：<code>stock &gt; 0</code> 带条件更新</td><td>乐观锁 vs 悲观锁；为什么从版本号改成 stock&gt;0？</td></tr>
+      <tr><td>一人一单</td><td><code>synchronized</code>（单机）→ 分布式锁（集群）</td><td>先查后插的竞态；锁为什么要包住事务？</td></tr>
+      <tr><td>分布式锁</td><td>SETNX 自研 → Lua 释放 → <b>Redisson</b></td><td>误删/原子性/可重入/看门狗/主从一致性</td></tr>
+      <tr><td>秒杀资格预检</td><td><b>Redis + Lua</b>：库存判断 + 一人一单 + 扣减，一次原子完成</td><td>为什么必须 Lua？（判断与扣减之间不能插队）</td></tr>
+      <tr><td>异步秒杀</td><td>Lua 发资格 → <b>Redis Stream</b> 消费者组异步落库</td><td>为什么异步？消息怎么保证不丢（ACK/pending）？</td></tr>
+    </table>
+    <div class="note"><b>这份材料的用法：</b>每个环节都按"<b>流程图（怎么走）→ 说人话（比喻）→ 遗留问题（下一站为什么存在）</b>"展开；最后一节给 60 秒面试话术和追问树。</div>
+  </div>
+</section>
+
+<!-- ================= 2. 难在哪 ================= -->
+<section id="hard">
+  <div class="sec-head"><div class="sec-no">2</div><h2>秒杀难在哪：三座大山</h2></div>
+  <p class="sec-sub">先想清楚敌人是谁，再看每一代方案在打哪一个。</p>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    把秒杀想象成"<b>食堂 12:00 开抢限量 100 份的半价鸡腿饭</b>"：<br>
+    ① <b>超卖</b>——最后 1 份鸡腿，两个人同时看到"还有"，都付了钱 → 卖出 101 份；<br>
+    ② <b>一人多单</b>——同一个同学拿两份（自己排完又替"另一个自己"排）；<br>
+    ③ <b>数据库被冲垮</b>——1 万人同时挤在窗口（数据库）前，窗口直接瘫痪。
+  </div>
+
+  <div class="card">
+    <table>
+      <tr><th style="width:18%">大山</th><th style="width:41%">怎么产生的</th><th>课程的解法（后文各一节）</th></tr>
+      <tr><td><b>超卖</b></td><td>"先查库存、再扣库存"两步之间有缝隙：两个线程都查到 <code>stock=1</code>，都扣成 0 → 实际卖了 2 份</td><td>乐观锁 CAS 条件更新（§5）</td></tr>
+      <tr><td><b>一人多单</b></td><td>"先查订单、再插订单"之间同样有缝隙：都查不到 → 都插入</td><td>synchronized → 分布式锁 → Lua 原子判定（§5/§6/§7）</td></tr>
+      <tr><td><b>数据库压力</b></td><td>开抢瞬间的无效请求（没库存、已买过）也要"查一圈数据库"才被拒</td><td>Redis+Lua 预检挡量（§7）→ 异步落库（§8）</td></tr>
+    </table>
+    <div class="note ok"><b>提炼成一句话（面试可直接用）：</b>秒杀的所有优化，本质是把"<b>判断资格</b>"和"<b>真正下单</b>"拆开——
+    判断资格放到 Redis 内存里做（快、原子），真正下单交给数据库异步完成（稳、限速）。</div>
+  </div>
+</section>
+
+<!-- ================= 3. 六代演进 ================= -->
+<section id="timeline">
+  <div class="sec-head"><div class="sec-no">3</div><h2>六代演进总览：每一代只解决一个问题，再暴露下一个</h2></div>
+  <p class="sec-sub">这张时间线就是面试标准答案的骨架——"为什么这么设计"全藏在每代的"遗留"里。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1240 300" role="img" aria-label="黑马点评秒杀六代演进时间线">
+      <text x="620" y="30" text-anchor="middle" style="font-size:13.5px;fill:#0f172a;font-weight:700">从「数据库硬扛」到「Redis 预检 + 异步削峰」——六代演进</text>
+
+      <!-- V1 -->
+      <rect class="bx-gray" x="20" y="70" width="180" height="160" rx="12"/>
+      <text class="t" x="110" y="96" text-anchor="middle">V1 数据库同步秒杀</text>
+      <text class="s-g" x="110" y="124" text-anchor="middle">✅ 流程跑通</text>
+      <text class="s-r" x="110" y="152" text-anchor="middle">⚠ 超卖</text>
+      <text class="s-r" x="110" y="170" text-anchor="middle">⚠ 一人多单</text>
+      <text class="s-r" x="110" y="188" text-anchor="middle">⚠ 数据库压力大</text>
+
+      <line class="ln" x1="200" y1="150" x2="216" y2="150"/>
+      <!-- V2 -->
+      <rect class="bx-amber" x="220" y="70" width="180" height="160" rx="12"/>
+      <text class="t" x="310" y="96" text-anchor="middle">V2 乐观锁 CAS</text>
+      <text class="s-g" x="310" y="124" text-anchor="middle">✅ 防住超卖</text>
+      <text class="s-r" x="310" y="152" text-anchor="middle">⚠ 一人多单还在</text>
+
+      <line class="ln" x1="400" y1="150" x2="416" y2="150"/>
+      <!-- V3 -->
+      <rect class="bx-amber" x="420" y="70" width="180" height="160" rx="12"/>
+      <text class="t" x="510" y="96" text-anchor="middle">V3 一人一单</text>
+      <text class="s" x="510" y="112" text-anchor="middle">synchronized</text>
+      <text class="s-g" x="510" y="140" text-anchor="middle">✅ 单机防重复</text>
+      <text class="s" x="510" y="156" text-anchor="middle">（锁包住事务）</text>
+      <text class="s-r" x="510" y="184" text-anchor="middle">⚠ 集群部署失效</text>
+
+      <line class="ln" x1="600" y1="150" x2="616" y2="150"/>
+      <!-- V4 -->
+      <rect class="bx-violet" x="620" y="70" width="180" height="160" rx="12"/>
+      <text class="t" x="710" y="96" text-anchor="middle">V4 分布式锁</text>
+      <text class="s" x="710" y="112" text-anchor="middle">SETNX → Lua → Redisson</text>
+      <text class="s-g" x="710" y="140" text-anchor="middle">✅ 集群互斥</text>
+      <text class="s-r" x="710" y="168" text-anchor="middle">⚠ 串行化吞吐低</text>
+      <text class="s-r" x="710" y="186" text-anchor="middle">⚠ 无效请求仍查库</text>
+
+      <line class="ln" x1="800" y1="150" x2="816" y2="150"/>
+      <!-- V5 -->
+      <rect class="bx-violet" x="820" y="70" width="180" height="160" rx="12"/>
+      <text class="t" x="910" y="96" text-anchor="middle">V5 Redis+Lua 预检</text>
+      <text class="s-g" x="910" y="124" text-anchor="middle">✅ 内存挡量</text>
+      <text class="s" x="910" y="140" text-anchor="middle">无效请求不碰 DB</text>
+      <text class="s-r" x="910" y="168" text-anchor="middle">⚠ 订单仍同步落库</text>
+
+      <line class="ln" x1="1000" y1="150" x2="1016" y2="150"/>
+      <!-- V6 -->
+      <rect class="bx-green" x="1020" y="70" width="180" height="160" rx="12" stroke-width="1.8"/>
+      <text class="t" x="1110" y="96" text-anchor="middle" style="fill:#047857">V6 异步秒杀</text>
+      <text class="s" x="1110" y="112" text-anchor="middle">Redis Stream</text>
+      <text class="s-g" x="1110" y="140" text-anchor="middle">✅ 立即返回</text>
+      <text class="s-g" x="1110" y="156" text-anchor="middle">✅ 异步落库削峰</text>
+      <text class="s-a" x="1110" y="184" text-anchor="middle">⚠ 无对账兜底*</text>
+
+      <text class="s" x="620" y="268" text-anchor="middle">* 学习项目取舍：Redis 即"真相"，没有 DB 唯一索引兜底与对账（本项目补上了这两块，见 §9~§10）</text>
+      <text class="s-a" x="620" y="288" text-anchor="middle" style="font-weight:700">★ 面试要点：演进链本身就是答案——每一代的「遗留」就是下一代的「为什么」</text>
+    </svg>
+    <div class="cap">图 1 · 六代演进：V1→V2 防超卖、V3→V4 跨集群防重复、V5→V6 从"挡量"到"异步"。每一步都保留前一步的成果。</div>
+  </div>
+</section>
+
+<!-- ================= 4. 全局唯一 ID ================= -->
+<section id="id">
+  <div class="sec-head"><div class="sec-no">4</div><h2>前置武器：全局唯一 ID（Redis INCR 版雪花）</h2></div>
+  <p class="sec-sub">订单 ID 不能再用数据库自增——分库分表会撞号，而且规律 ID 会泄露"今天卖了多少单"。</p>
+
+  <div class="card">
+    <h4>ID 的位布局（课程方案）</h4>
+    <div style="display:flex;font-family:Consolas,monospace;font-size:12.5px;text-align:center;border-radius:10px;overflow:hidden;border:1px solid var(--line)">
+      <div style="flex:2;background:#dbeafe;padding:10px 6px"><b>0</b><br>符号位 1bit<br>恒为 0</div>
+      <div style="flex:7;background:#fef3c7;padding:10px 6px"><b>时间戳 31bit</b><br>秒级，自定义起始纪元<br>（约可用 69 年）</div>
+      <div style="flex:8;background:#dcfce7;padding:10px 6px"><b>序列号 32bit</b><br>同一秒内的自增计数<br>（每秒可容 2³² 个）</div>
+    </div>
+    <pre>
+<span class="c">// 每天一个 key，用 Redis 自增做"秒内序列号"；其余位由位运算拼装</span>
+String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy:MM:dd"));
+<span class="k">long</span> seq = redisTemplate.opsForValue().increment(<span class="s">"icr:"</span> + date);   <span class="c">// 原子自增</span>
+<span class="k">long</span> orderId = (timestamp &lt;&lt; 32) | seq;   <span class="c">// 时间戳左移 32 位 拼 序列号</span>
+</pre>
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      ID = <b>「今天第几个 1/3 秒」</b>拼<b>「这一秒里的第几单」</b>：日期保证每天从头数且不重复，
+      Redis 的 <code>INCR</code> 保证"这一秒里的第几单"绝不会有两个人拿到同一个号（单线程原子自增）。
+      分库分表后各表 ID 依然全局唯一、趋势递增（对索引友好），还不会暴露具体销量。
+    </div>
+    <div class="note"><b>面试顺带提一句加分：</b>同类方案还有雪花算法（Snowflake）——机器位替代 Redis 自增；本项目的分库分表 ID 用的是<b>基因法</b>（把分片基因写进 ID），
+    目标是"分片键可从 ID 反推"，与本页 §10 对照表呼应。</div>
+  </div>
+</section>
+
+<!-- ================= 5. 超卖与一人一单 ================= -->
+<section id="oversell">
+  <div class="sec-head"><div class="sec-no">5</div><h2>第一战：超卖（乐观锁）与一人一单（先查后插的竞态）</h2></div>
+  <p class="sec-sub">两座山共用同一个成因：<b>检查与修改之间存在时间缝隙</b>。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 350" role="img" aria-label="超卖的产生与乐观锁修复对比图">
+      <!-- 左：超卖 -->
+      <text class="t-r" x="265" y="34" text-anchor="middle">❌ 直接扣减：超卖怎么来的</text>
+      <rect class="bx-red" x="90" y="50" width="350" height="50" rx="10"/>
+      <text class="s" x="265" y="80" text-anchor="middle" style="font-size:11.8px">线程1、线程2 同时查到：stock = 1（都看到"还有"）</text>
+      <line class="ln" x1="265" y1="100" x2="265" y2="118"/>
+      <rect class="bx-red" x="90" y="122" width="350" height="50" rx="10"/>
+      <text class="s" x="265" y="152" text-anchor="middle" style="font-size:11.8px">都判断 stock &gt; 0 ✔ 通过（检查完成）</text>
+      <line class="ln" x1="265" y1="172" x2="265" y2="190"/>
+      <rect class="bx-red" x="90" y="194" width="350" height="50" rx="10"/>
+      <text class="s" x="265" y="224" text-anchor="middle" style="font-size:11.8px">各自执行 stock = stock − 1（修改）</text>
+      <line class="ln" x1="265" y1="244" x2="265" y2="262"/>
+      <rect x="90" y="266" width="350" height="56" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6"/>
+      <text class="t-r" x="265" y="300" text-anchor="middle">结果 stock = −1 —— 卖了 2 份 ❌ 超卖</text>
+
+      <!-- 分隔 -->
+      <line x1="510" y1="40" x2="510" y2="330" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="6 5"/>
+      <text class="t" x="510" y="196" text-anchor="middle" style="fill:#94a3b8">VS</text>
+
+      <!-- 右：乐观锁 -->
+      <text class="t-g" x="755" y="34" text-anchor="middle">✅ 乐观锁 CAS：把检查写进 SQL</text>
+      <rect class="bx-green" x="580" y="50" width="350" height="70" rx="10"/>
+      <text class="s" x="755" y="78" text-anchor="middle" style="font-size:11.5px;font-family:Consolas,monospace">UPDATE tb_seckill_voucher</text>
+      <text class="s" x="755" y="98" text-anchor="middle" style="font-size:11.5px;font-family:Consolas,monospace">SET stock = stock − 1 WHERE stock &gt; 0</text>
+      <line class="ln" x1="755" y1="120" x2="755" y2="140"/>
+      <rect class="bx-gray" x="580" y="144" width="350" height="60" rx="10"/>
+      <text class="s" x="755" y="168" text-anchor="middle" style="font-size:11.8px">数据库对同一行加写锁，两个 UPDATE 串行执行</text>
+      <text class="s" x="755" y="188" text-anchor="middle" style="font-size:11.8px">（检查与修改不再有缝隙）</text>
+      <line class="ln" x1="755" y1="204" x2="755" y2="222"/>
+      <rect class="bx-green" x="580" y="226" width="350" height="96" rx="10"/>
+      <text class="s-g" x="755" y="252" text-anchor="middle" style="font-size:11.8px;font-weight:700">线程1：影响行数 = 1 → 下单成功</text>
+      <text class="s-r" x="755" y="276" text-anchor="middle" style="font-size:11.8px;font-weight:700">线程2：影响行数 = 0 → 返回「库存不足」</text>
+      <text class="s" x="755" y="302" text-anchor="middle" style="font-size:11.5px">（课程还讲过版本号法；因失败率过高改用 stock&gt;0）</text>
+    </svg>
+    <div class="cap">图 2 · 超卖的成因是"检查"与"修改"两步之间的缝隙；把检查塞进 UPDATE 的条件里，缝隙就没了。</div>
+  </div>
+
+  <div class="card">
+    <h3>一人一单：同一道缝隙，换个战场</h3>
+    <p style="font-size:13.5px;color:var(--sub);margin:6px 0">
+      "先查有没有订单、再插入订单"——并发下两个线程都查不到，就都会插入。课程的修法分两级：
+    </p>
+    <table>
+      <tr><th style="width:18%">阶段</th><th style="width:44%">做法</th><th>为什么 / 坑</th></tr>
+      <tr>
+        <td><b>单机版</b></td>
+        <td><code>synchronized (userId.toString().intern())</code> 包住下单方法</td>
+        <td><code>intern()</code> 复用字符串常量池，避免每个请求都新建锁对象；只对<b>同一个用户</b>串行（不同用户互不影响）</td>
+      </tr>
+      <tr>
+        <td><b>关键细节</b></td>
+        <td>锁必须包住<b>整个事务</b>（通过 <code>AopContext.currentProxy()</code> 调代理对象）</td>
+        <td>若锁在事务提交前就释放：后一个线程查不到"还没提交的订单"→ <b>还是重复下单</b>（面试高频追问）</td>
+      </tr>
+      <tr>
+        <td><b>集群版</b></td>
+        <td>换分布式锁（下一节）</td>
+        <td>synchronized 只在单个 JVM 内生效——部署两台机器，锁就"各锁各的"了</td>
+      </tr>
+    </table>
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      <code>synchronized</code> = 宿舍楼下只有一个门卫（单机有效）；但你们楼<b>有两个门</b>（两台服务器）时，
+      就需要一张<b>全楼共享的门禁系统</b>——这就是分布式锁。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6. 分布式锁 ================= -->
+<section id="lock">
+  <div class="sec-head"><div class="sec-no">6</div><h2>第二战：分布式锁的三代进化（SETNX → Lua → Redisson）</h2></div>
+  <p class="sec-sub">课程先手写一版锁、亲手踩四个坑，再引出 Redisson——"为什么用 Redisson"的答案全在这四个坑里。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 470" role="img" aria-label="Redisson tryLock 流程图与自研锁四道坎">
+      <!-- 入口 -->
+      <rect class="bx-gray" x="100" y="20" width="300" height="50" rx="12"/>
+      <text class="t" x="250" y="51" text-anchor="middle">lock.tryLock(等待时间, 租期)</text>
+      <line class="ln" x1="250" y1="70" x2="250" y2="98"/>
+
+      <!-- 抢锁判断 -->
+      <polygon class="dia" points="130,150 250,100 370,150 250,200"/>
+      <text class="t" x="250" y="145" text-anchor="middle" style="font-size:12.5px">SETNX / Hash 抢锁</text>
+      <text class="s" x="250" y="164" text-anchor="middle">成功了吗？</text>
+
+      <!-- 失败分支 -->
+      <line class="ln-a" x1="370" y1="150" x2="612" y2="150"/>
+      <text class="lb-a" x="490" y="140" text-anchor="middle">失败</text>
+      <rect class="bx-amber" x="620" y="110" width="340" height="80" rx="12"/>
+      <text class="s-a" x="790" y="138" text-anchor="middle" style="font-weight:700">① 订阅锁释放频道（Pub/Sub）</text>
+      <text class="s" x="790" y="158" text-anchor="middle">② 等待唤醒或超时 → 回到尝试（循环）</text>
+      <text class="s" x="790" y="178" text-anchor="middle">这就是「可重试」，自研版没有</text>
+
+      <!-- 成功分支 -->
+      <line class="ln" x1="250" y1="200" x2="250" y2="228"/>
+      <text class="lb-g" x="262" y="220">成功</text>
+      <rect class="bx-violet" x="100" y="232" width="300" height="76" rx="12"/>
+      <text class="t" x="250" y="258" text-anchor="middle" style="fill:#6d28d9">看门狗启动</text>
+      <text class="s" x="250" y="277" text-anchor="middle">默认租期 30s，每 10s（1/3）自动续期</text>
+      <text class="s" x="250" y="295" text-anchor="middle">可重入：Hash {uuid:线程id} → 计数 +1</text>
+      <line class="ln" x1="250" y1="308" x2="250" y2="330"/>
+
+      <rect class="bx-blue" x="100" y="334" width="300" height="48" rx="12"/>
+      <text class="t" x="250" y="364" text-anchor="middle">执行业务（一人一单下单）</text>
+      <line class="ln" x1="250" y1="382" x2="250" y2="402"/>
+
+      <rect class="bx-green" x="100" y="406" width="300" height="52" rx="12"/>
+      <text class="s" x="250" y="428" text-anchor="middle" style="font-weight:700;fill:#047857">unlock：计数 −1，归零才删 key</text>
+      <text class="s" x="250" y="446" text-anchor="middle">并发布释放消息（唤醒等待者）</text>
+
+      <!-- 右侧：自研四道坎 -->
+      <rect class="bx-red" x="620" y="220" width="340" height="238" rx="12"/>
+      <text class="t-r" x="790" y="248" text-anchor="middle">自研 SETNX 锁的四道坎</text>
+      <text class="s" x="640" y="276" style="font-size:11.5px">① 不可重入 —— 同一线程再抢同一把锁会死锁</text>
+      <text class="s" x="640" y="300" style="font-size:11.5px">② 不可重试 —— 抢不到就立刻失败，没有等待机制</text>
+      <text class="s" x="640" y="324" style="font-size:11.5px">③ 超时释放 —— 业务没跑完锁先过期，别人进来了</text>
+      <text class="s" x="640" y="348" style="font-size:11.5px">　　（Redisson 看门狗就是治这个：业务在跑就续期）</text>
+      <text class="s" x="640" y="372" style="font-size:11.5px">④ 主从一致性 —— 主节点宕机、锁还没同步到从库</text>
+      <text class="s" x="640" y="396" style="font-size:11.5px">　　（Redisson 的 MultiLock 连多个主节点一起加锁）</text>
+      <text class="s-a" x="790" y="430" text-anchor="middle" style="font-weight:700">课程结论：生产直接用 Redisson，别再手写</text>
+    </svg>
+    <div class="cap">图 3 · Redisson tryLock：抢到就启动看门狗续期；抢不到就订阅等待。右下四道坎就是"为什么不用手写锁"的标准答案。</div>
+  </div>
+
+  <div class="card">
+    <h3>自研锁的两版代码——错在哪，Lua 怎么救</h3>
+    <pre>
+<span class="c">// ❌ 版本一：两条命令分开执行 —— 没设过期就宕机 → 死锁</span>
+Boolean ok = redisTemplate.opsForValue().setIfAbsent(<span class="s">"lock:order:"</span> + userId, <span class="s">"1"</span>);
+redisTemplate.expire(<span class="s">"lock:order:"</span> + userId, <span class="k">10</span>, TimeUnit.SECONDS);
+<span class="c">// ✅ 改成一条原子命令：SET key value NX EX 10</span>
+
+<span class="c">// ❌ 版本二：释放锁"先判断再删"两步走 —— 判断完可能超时换了锁主 → 删了别人的锁</span>
+<span class="k">if</span> (redisTemplate.opsForValue().get(key).equals(token)) { redisTemplate.delete(key); }
+<span class="c">// ✅ 用 Lua 把"判断 + 删除"合成一次原子执行（让 Redis 单线程来保证中间不被打断）</span>
+</pre>
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      <b>为什么释放锁要用 Lua？</b>——"看一眼牌子是不是我的、再摘牌"这两步之间，
+      牌子可能已经超时换成别人的了，你这一摘就摘错了。<b>Lua = 把这两步焊成一瞬间</b>，神都插不进来。
+      （这一条与本项目 §8 的"Lua 预检"是同一个原理：<b>Redis 单线程执行脚本，中间不插队</b>。）
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7. Lua 预检 ================= -->
+<section id="lua">
+  <div class="sec-head"><div class="sec-no">7</div><h2>第三战（★核心）：Redis + Lua 预检——三道判断压缩成一次原子</h2></div>
+  <p class="sec-sub">到这里，课程把"库存判断 + 一人一单 + 扣减"从数据库整体搬进了 Redis 内存，一次往返完成。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 560" role="img" aria-label="Redis Lua 秒杀预检流程图">
+      <!-- 请求 -->
+      <rect class="bx-gray" x="40" y="230" width="200" height="90" rx="12"/>
+      <text class="t" x="140" y="262" text-anchor="middle">秒杀请求</text>
+      <text class="s" x="140" y="282" text-anchor="middle">voucherId + userId</text>
+      <text class="s" x="140" y="300" text-anchor="middle">（EVALSHA 发脚本）</text>
+      <line class="ln-v" x1="240" y1="275" x2="292" y2="275"/>
+
+      <!-- Lua 大框 -->
+      <rect x="300" y="40" width="400" height="480" rx="14" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.8" stroke-dasharray="8 5"/>
+      <text class="t" x="500" y="72" text-anchor="middle" style="fill:#6d28d9">Lua 脚本：一次原子执行，中间不被打断</text>
+
+      <rect class="bx" x="340" y="96" width="320" height="72" rx="10" fill="#fff"/>
+      <text class="s" x="500" y="122" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#0f172a">① 库存够吗？</text>
+      <text class="s" x="500" y="142" text-anchor="middle" style="font-family:Consolas,monospace;font-size:11px">get seckill:stock:{id}  →  &lt;= 0 ?</text>
+      <text class="s-r" x="500" y="160" text-anchor="middle">不足 → return 1</text>
+      <line class="ln" x1="500" y1="168" x2="500" y2="184"/>
+
+      <rect class="bx" x="340" y="188" width="320" height="72" rx="10" fill="#fff"/>
+      <text class="s" x="500" y="214" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#0f172a">② 你买过吗？</text>
+      <text class="s" x="500" y="234" text-anchor="middle" style="font-family:Consolas,monospace;font-size:11px">sismember seckill:order:{id} userId</text>
+      <text class="s-r" x="500" y="252" text-anchor="middle">买过 → return 2</text>
+      <line class="ln" x1="500" y1="260" x2="500" y2="276"/>
+
+      <rect class="bx" x="340" y="280" width="320" height="72" rx="10" fill="#fff"/>
+      <text class="s" x="500" y="306" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#0f172a">③ 扣库存</text>
+      <text class="s" x="500" y="326" text-anchor="middle" style="font-family:Consolas,monospace;font-size:11px">incrby seckill:stock:{id} -1</text>
+      <text class="s" x="500" y="344" text-anchor="middle">（内存自减，天经地义地快）</text>
+      <line class="ln" x1="500" y1="352" x2="500" y2="368"/>
+
+      <rect class="bx" x="340" y="372" width="320" height="72" rx="10" fill="#fff"/>
+      <text class="s" x="500" y="398" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#0f172a">④ 记名 + 入队，返回成功</text>
+      <text class="s" x="500" y="418" text-anchor="middle" style="font-family:Consolas,monospace;font-size:11px">sadd …  /  xadd stream.orders …（V6）</text>
+      <text class="s-g" x="500" y="436" text-anchor="middle">成功 → return 0</text>
+
+      <text class="s" x="500" y="470" text-anchor="middle">★ 库存预热：新增秒杀券时就写入 Redis，开抢时只读内存</text>
+      <text class="s" x="500" y="492" text-anchor="middle">★ 时间窗口（开始/结束）由 Java 侧前置校验</text>
+
+      <!-- 结果三条 -->
+      <line class="ln-g" x1="700" y1="275" x2="756" y2="150"/>
+      <line class="ln-r" x1="700" y1="275" x2="756" y2="275"/>
+      <line class="ln-r" x1="700" y1="275" x2="756" y2="400"/>
+      <text class="lb-g" x="712" y="200">return 0</text>
+      <text class="lb-r" x="712" y="268">return 1</text>
+      <text class="lb-r" x="712" y="370">return 2</text>
+
+      <rect class="bx-green" x="760" y="116" width="220" height="70" rx="12"/>
+      <text class="t-g" x="870" y="144" text-anchor="middle">通过 ✅</text>
+      <text class="s" x="870" y="164" text-anchor="middle">进入下单流程（V5 同步 / V6 异步）</text>
+
+      <rect class="bx-red" x="760" y="240" width="220" height="70" rx="12"/>
+      <text class="t-r" x="870" y="268" text-anchor="middle">库存不足 ❌</text>
+      <text class="s" x="870" y="288" text-anchor="middle">数据库根本不知道你来过</text>
+
+      <rect class="bx-red" x="760" y="364" width="220" height="70" rx="12"/>
+      <text class="t-r" x="870" y="392" text-anchor="middle">重复下单 ❌</text>
+      <text class="s" x="870" y="412" text-anchor="middle">一人一单在内存里就拦住了</text>
+    </svg>
+    <div class="cap">图 4 · V5 的核心：三道判断 + 两次修改 = 一次网络往返、一次原子执行。被拒的请求（1/2）连数据库的影子都摸不到。</div>
+  </div>
+
+  <div class="card">
+    <h4>Lua 脚本原文（课程版，返回值 0/1/2）</h4>
+    <pre>
+<span class="c">-- 参数：ARGV[1]=voucherId  ARGV[2]=userId</span>
+<span class="k">local</span> stockKey = <span class="s">'seckill:stock:'</span> .. ARGV[1]
+<span class="k">local</span> orderKey = <span class="s">'seckill:order:'</span> .. ARGV[1]
+<span class="k">if</span> (<span class="k">tonumber</span>(redis.call(<span class="s">'get'</span>, stockKey)) &lt;= <span class="k">0</span>) <span class="k">then</span> <span class="k">return</span> <span class="r">1</span> <span class="k">end</span>          <span class="c">-- 库存不足</span>
+<span class="k">if</span> (redis.call(<span class="s">'sismember'</span>, orderKey, ARGV[2]) == <span class="k">1</span>) <span class="k">then</span> <span class="k">return</span> <span class="r">2</span> <span class="k">end</span>  <span class="c">-- 重复下单</span>
+redis.call(<span class="s">'incrby'</span>, stockKey, -<span class="k">1</span>)                                <span class="c">-- 扣库存</span>
+redis.call(<span class="s">'sadd'</span>, orderKey, ARGV[2])                              <span class="c">-- 记名（一人一单）</span>
+<span class="k">return</span> <span class="r">0</span>                                                          <span class="c">-- 成功</span>
+</pre>
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      这就像<b>把四个动作焊成一个动作</b>：看库存 → 看名单 → 扣一份 → 写名字，
+      由 Redis 单线程一气呵成。中间任何人想插队都没门——<b>超卖和重复下单从"要防的 bug"变成"不可能发生的物理事实"</b>。
+    </div>
+    <div class="note warn"><b>V5 的遗留（也就是 V6 的动机）：</b>Lua 预检之后，通过的请求<b>仍然要同步走一遍数据库</b>（扣库存 + 写订单）。
+    数据库这个"慢动作"还在用户的等待链路里——挡掉了无效请求，但"有效的那些"依旧慢。所以要<b>异步</b>。</div>
+  </div>
+</section>
+
+<!-- ================= 8. 异步秒杀 ================= -->
+<section id="stream">
+  <div class="sec-head"><div class="sec-no">8</div><h2>终战（★核心）：异步秒杀——Lua 发资格，Redis Stream 慢慢落库</h2></div>
+  <p class="sec-sub">思路：用户只等"有没有抢到"（Redis 内存级），"把订单写进数据库"交给消费者后台做。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 620" role="img" aria-label="异步秒杀全链路：Lua 入队 + Stream 消费者组落库">
+      <!-- 第 1 行 -->
+      <rect class="bx-gray" x="40" y="30" width="180" height="64" rx="12"/>
+      <text class="t" x="130" y="56" text-anchor="middle">① 用户点击秒杀</text>
+      <text class="s" x="130" y="76" text-anchor="middle">瞬时高并发涌入</text>
+      <line class="ln" x1="220" y1="62" x2="256" y2="62"/>
+
+      <rect class="bx-blue" x="260" y="30" width="230" height="64" rx="12"/>
+      <text class="t" x="375" y="56" text-anchor="middle">② Java：生成全局唯一 ID</text>
+      <text class="s" x="375" y="76" text-anchor="middle">orderId（1+31+32 位）</text>
+      <line class="ln" x1="490" y1="62" x2="516" y2="62"/>
+
+      <rect class="bx-violet" x="520" y="30" width="250" height="64" rx="12" stroke-width="1.8"/>
+      <text class="t" x="645" y="54" text-anchor="middle" style="fill:#6d28d9">③ Lua：预检 + 扣减 + XADD</text>
+      <text class="s" x="645" y="74" text-anchor="middle">校验、扣库存、SADD 记名、消息入队全原子</text>
+      <line class="ln-g" x1="770" y1="62" x2="800" y2="62"/>
+      <rect class="bx-green" x="804" y="30" width="176" height="64" rx="12"/>
+      <text class="t-g" x="892" y="56" text-anchor="middle">④ 立即返回「抢购中」</text>
+      <text class="s" x="892" y="76" text-anchor="middle">带上 orderId，不等待落库</text>
+
+      <!-- 下行到 Stream -->
+      <line class="ln" x1="645" y1="94" x2="645" y2="146"/>
+      <text class="s-a" x="655" y="124">Lua 里直接 XADD stream.orders（userId / voucherId / orderId）</text>
+      <rect class="bx-dark" x="460" y="150" width="370" height="62" rx="12"/>
+      <text class="t-w" x="645" y="176" text-anchor="middle">Redis Stream：stream.orders</text>
+      <text class="s-w" x="645" y="196" text-anchor="middle">可持久化的消息队列（不只是内存"传声筒"）</text>
+
+      <!-- 消费者 -->
+      <line class="ln" x1="645" y1="212" x2="645" y2="252"/>
+      <text class="s" x="655" y="236">消费者组 XREADGROUP BLOCK 2000 STREAMS stream.orders &gt;</text>
+      <rect class="bx-blue" x="460" y="256" width="370" height="86" rx="12"/>
+      <text class="t" x="645" y="282" text-anchor="middle">⑤ 独立线程池 · 消费者组 g1</text>
+      <text class="s" x="645" y="302" text-anchor="middle">读到一条 → 创建订单（落库）</text>
+      <text class="s" x="645" y="322" text-anchor="middle">处理成功 → XACK 确认签收</text>
+      <line class="ln" x1="645" y1="342" x2="645" y2="376"/>
+      <rect class="bx-gray" x="460" y="380" width="370" height="58" rx="12"/>
+      <text class="t" x="645" y="404" text-anchor="middle">⑥ 数据库：扣减库存 + 写入订单表</text>
+      <text class="s" x="645" y="424" text-anchor="middle">按消费者自己的节奏消费（这就是削峰）</text>
+
+      <!-- 失败支线 -->
+      <line class="ln-a" x1="460" y1="299" x2="360" y2="299"/>
+      <text class="lb-a" x="410" y="289" text-anchor="middle">消费失败</text>
+      <rect class="bx-amber" x="90" y="256" width="266" height="86" rx="12"/>
+      <text class="s-a" x="223" y="282" text-anchor="middle" style="font-weight:700">⑦ 消息进 pending list（待办架）</text>
+      <text class="s" x="223" y="302" text-anchor="middle">启动/循环时先读自己的 pending（ID 用 0）</text>
+      <text class="s" x="223" y="322" text-anchor="middle">重试处理，或 XCLAIM 转让给别的消费者</text>
+
+      <!-- 底部两条 -->
+      <rect x="40" y="468" width="940" height="58" rx="12" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.4"/>
+      <text x="510" y="492" text-anchor="middle" style="font-size:12.8px;fill:#047857;font-weight:700">★ 用户等待 = 一次 Lua（内存级）；数据库压力 = 消费者组按自己的速度消费 —— 这就是「削峰填谷」</text>
+      <text class="s" x="510" y="513" text-anchor="middle">与 V5 对比：V5 是"把无效请求挡在门外"，V6 是"把有效请求也请进等候区"</text>
+
+      <rect x="40" y="544" width="940" height="58" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4" stroke-dasharray="6 4"/>
+      <text x="510" y="568" text-anchor="middle" style="font-size:12.8px;fill:#b45309;font-weight:700">前置教训：最早用 JDK 阻塞队列（内存容量有限 + 服务宕机丢单）→ 才换成 Redis Stream</text>
+      <text class="s" x="510" y="589" text-anchor="middle">Stream 的价值：可持久化 + 消费者组 + ACK + pending 重试 —— List 会丢消息、PubSub 不持久化</text>
+    </svg>
+    <div class="cap">图 5 · 异步秒杀全链路：资格判定在 Lua（快），落库在消费者组（稳），失败的消息躺在 pending 架子上等重试。</div>
+  </div>
+
+  <div class="card">
+    <h3>为什么是 Redis Stream？——三种"Redis 消息队列"对比（课程选型）</h3>
+    <table>
+      <tr><th style="width:16%">方案</th><th style="width:30%">机制</th><th>致命缺陷 / 适用性</th></tr>
+      <tr><td><b>List</b></td><td><code>LPUSH</code> + <code>BRPOP</code> 阻塞取</td><td><span class="no">消息被取走就没了</span>：消费到一半宕机 → 消息丢失；且一条消息只能被一个消费者处理</td></tr>
+      <tr><td><b>Pub/Sub</b></td><td>发布订阅，广播给所有订阅者</td><td><span class="no">不持久化</span>：没人订阅或消费者掉线，消息直接蒸发</td></tr>
+      <tr><td><b>Stream</b> ✓</td><td>消费者组 + <code>XREADGROUP</code> + <code>XACK</code> + pending list</td><td><span class="ok">可持久化、可 ACK、失败可重试、可多消费者分摊</span>——所以被课程选为秒杀异步落库的载体</td></tr>
+    </table>
+    <div class="say">
+      <span class="st">💬 说人话</span>
+      Stream 像奶茶店的<b>取号叫号系统</b>：订单小票（消息）落在单架上（持久化），
+      柜员（消费者组）按号叫人，办完在票上盖章（XACK）；办砸的票放回"待办架"（pending），
+      换个人接着办——而不是像 List 那样"票一撕就没"，也不是 PubSub 那样"喊一嗓子没人听见就作废"。
+    </div>
+    <div class="note warn"><b>诚实边界：</b>课程的异步方案里，Redis（库存 + 一人一单 Set）是"唯一真相"——
+    消费失败靠 pending 重试兜底，但<b>没有对账、数据库没有唯一索引兜底、Redis 宕机即不可用</b>。学习项目可以接受；
+    生产要补的正是下一节对照表里本项目做过的事。</div>
+  </div>
+</section>
+
+<!-- ================= 9. 全链路对照 ================= -->
+<section id="vs">
+  <div class="sec-head"><div class="sec-no">9</div><h2>两条链路并排：黑马点评 vs 本项目</h2></div>
+  <p class="sec-sub">同样的武器库（Lua 原子 / 一人一单 / 分布式锁 / 异步削峰），关键差别只有一个：<b>真相放在哪</b>。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 600" role="img" aria-label="黑马点评与本项目秒杀链路对照图">
+      <!-- 黑马点评泳道 -->
+      <text class="t" x="40" y="34">🍗 黑马点评 · 优惠券秒杀</text>
+      <rect class="bx-gray" x="40" y="52" width="180" height="76" rx="12"/>
+      <text class="s" x="130" y="84" text-anchor="middle" style="font-weight:700;font-size:11.8px">① 请求</text>
+      <text class="s" x="130" y="104" text-anchor="middle">秒杀接口</text>
+      <line class="ln" x1="220" y1="90" x2="248" y2="90"/>
+
+      <rect class="bx-violet" x="252" y="52" width="210" height="76" rx="12"/>
+      <text class="s" x="357" y="80" text-anchor="middle" style="font-weight:700;font-size:11.8px">② Lua 预检（Redis 内存）</text>
+      <text class="s" x="357" y="100" text-anchor="middle">库存 + 一人一单 + 扣减 + 入队</text>
+      <line class="ln" x1="462" y1="90" x2="490" y2="90"/>
+
+      <rect class="bx-blue" x="494" y="52" width="190" height="76" rx="12"/>
+      <text class="s" x="589" y="80" text-anchor="middle" style="font-weight:700;font-size:11.8px">③ 返回订单号</text>
+      <text class="s" x="589" y="100" text-anchor="middle">用户秒回「抢购中」</text>
+      <line class="ln" x1="684" y1="90" x2="712" y2="90"/>
+
+      <rect class="bx-green" x="716" y="52" width="200" height="76" rx="12"/>
+      <text class="s" x="816" y="80" text-anchor="middle" style="font-weight:700;font-size:11.8px">④ Stream → 消费者异步落库</text>
+      <text class="s" x="816" y="100" text-anchor="middle">XREADGROUP / XACK / pending</text>
+
+      <rect x="40" y="146" width="876" height="44" rx="10" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.3"/>
+      <text x="478" y="173" text-anchor="middle" style="font-size:12.3px;fill:#b91c1c;font-weight:700">真相 = Redis（库存扣了就算数；无对账、无 DB 唯一索引兜底、Redis 宕机不可用）</text>
+
+      <!-- 分隔 -->
+      <line x1="40" y1="222" x2="980" y2="222" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="7 5"/>
+      <text class="t" x="510" y="248" text-anchor="middle" style="fill:#94a3b8">同款武器：Lua 原子判定 · 一人一单 ≈ 幂等 · 分布式锁 · 异步削峰　｜　下面：本项目</text>
+
+      <!-- 本项目泳道 -->
+      <text class="t" x="40" y="292">🏫 本项目 · 选课/预约（campus-platform，见 docs/11）</text>
+      <rect class="bx-gray" x="40" y="310" width="180" height="76" rx="12"/>
+      <text class="s" x="130" y="342" text-anchor="middle" style="font-weight:700;font-size:11.8px">① 请求（经网关限流）</text>
+      <text class="s" x="130" y="362" text-anchor="middle">Sentinel + 幂等 40060</text>
+      <line class="ln" x1="220" y1="348" x2="248" y2="348"/>
+
+      <rect class="bx-violet" x="252" y="310" width="210" height="76" rx="12"/>
+      <text class="s" x="357" y="338" text-anchor="middle" style="font-weight:700;font-size:11.8px">② 预扣闸门 Lua（预计数）</text>
+      <text class="s" x="357" y="358" text-anchor="middle">跨时间片全成或全败</text>
+      <line class="ln" x1="462" y1="348" x2="490" y2="348"/>
+
+      <rect class="bx-blue" x="494" y="310" width="190" height="76" rx="12"/>
+      <text class="s" x="589" y="338" text-anchor="middle" style="font-weight:700;font-size:11.8px">③ 同步事务落库</text>
+      <text class="s" x="589" y="358" text-anchor="middle">条件更新 + 唯一索引（真相）</text>
+      <line class="ln" x1="684" y1="348" x2="712" y2="348"/>
+
+      <rect class="bx-green" x="716" y="310" width="200" height="76" rx="12"/>
+      <text class="s" x="816" y="338" text-anchor="middle" style="font-weight:700;font-size:11.8px">④ 回补 + 30s 对账自愈</text>
+      <text class="s" x="816" y="358" text-anchor="middle">+ RocketMQ 事件/延时消息</text>
+
+      <rect x="40" y="404" width="876" height="44" rx="10" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.3"/>
+      <text x="478" y="431" text-anchor="middle" style="font-size:12.3px;fill:#047857;font-weight:700">真相 = MySQL（Redis 只是预计数：降级直通、失败回补、漂移对账 —— 只损失性能，不丢正确性）</text>
+
+      <!-- 底部差异总结 -->
+      <rect x="40" y="472" width="876" height="106" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.3"/>
+      <text class="s" x="478" y="498" text-anchor="middle" style="font-size:12.3px;fill:#334155"><tspan style="font-weight:700">为什么这么选：</tspan>黑马点评是"Redis 实战课"，目标是把 Redis 用到极致（异步、Stream 都是教学重点）；</text>
+      <text class="s" x="478" y="520" text-anchor="middle" style="font-size:12.3px;fill:#334155">本项目要保"恰好"级别的正确性，所以把最终裁决权留给数据库，Redis 只做挡量加速器。</text>
+      <text class="s-a" x="478" y="548" text-anchor="middle" style="font-size:12.3px;font-weight:700">★ 面试讲法：「我参考了黑马点评的秒杀思路，但在真相归属上做了更保守的选择——并给出了对账与兜底。」</text>
+    </svg>
+    <div class="cap">图 6 · 两条链路：黑马 = Redis 即真相 + 全异步；本项目 = Redis 预计数 + 同步落库 + 对账自愈。武器相同，哲学不同。</div>
+  </div>
+</section>
+
+<!-- ================= 10. 武器对照表 ================= -->
+<section id="table">
+  <div class="sec-head"><div class="sec-no">10</div><h2>武器对照表：黑马点评 ↔ 本项目（面试拿来即用）</h2></div>
+  <p class="sec-sub">同一类问题，两个项目各自的解法——被问"你还了解别的方案吗"时，这张表就是答案。</p>
+
+  <div class="card">
+    <h3>① 同款武器清单（可互相印证）</h3>
+    <table>
+      <tr><th style="width:20%">问题</th><th style="width:40%">黑马点评</th><th>本项目 campus-platform</th></tr>
+      <tr><td><b>内存挡量</b></td><td>Redis+Lua 预检：库存/一人一单/扣减一次原子（返回 0/1/2）</td><td><b>预扣闸门</b>：Lua"先全校验再逐个扣"（跨时间片 all-or-nothing）；1000 并发 → 990 挡 / 10 进库</td></tr>
+      <tr><td><b>一人一单 / 防重</b></td><td>Redis Set <code>sismember</code></td><td><b>幂等切面</b>（两态 Lua，40060）+ <b>DB 唯一索引</b>双保险</td></tr>
+      <tr><td><b>分布式锁</b></td><td>自研 SETNX+Lua → <b>Redisson</b>（看门狗/可重入/MultiLock）</td><td>自研 <code>SET NX PX</code>+Lua（<b>明确不引 Redisson</b>：临界区极短；接口预留可替换）</td></tr>
+      <tr><td><b>异步 / MQ</b></td><td><b>Redis Stream</b> 消费者组（下单落库异步化）</td><td><b>RocketMQ</b>（事件 + 延时判爽约；落库仍在事务内同步）</td></tr>
+      <tr><td><b>全局唯一 ID</b></td><td>Redis <code>INCR</code>：1+31+32 位</td><td><b>基因法</b>分片 ID（分片键可从 ID 反推，分库分表友好）</td></tr>
+      <tr><td><b>防超卖兜底</b></td><td>Lua 扣 Redis 库存（真相层就是它）</td><td><b>条件更新</b> <code>WHERE selected &lt; capacity</code> + 唯一索引（真相层在 DB）</td></tr>
+    </table>
+
+    <h3 style="margin-top:20px">② 关键差异（面试主动讲，反而是加分）</h3>
+    <table>
+      <tr><th style="width:18%">维度</th><th style="width:36%">黑马点评</th><th>本项目</th></tr>
+      <tr><td><b>真相在哪</b></td><td>Redis（库存扣了、Set 记了 = 成交）</td><td><b>MySQL</b>（Redis 只是"预计数"，随时可被真值纠正）</td></tr>
+      <tr><td><b>Redis 挂了</b></td><td>秒杀不可用（拿不到库存/资格）</td><td><b>降级直通数据库</b>：只损失性能，不丢正确性</td></tr>
+      <tr><td><b>状态漂移</b></td><td>靠 Stream pending 重试；无对账</td><td><b>回补（INCRBY）+ 30 秒对账 + 启动即对账</b>（真实修过一个"重启后计数器残留误拦 151 请求"的缺陷）</td></tr>
+      <tr><td><b>失败回滚</b></td><td>消息重试（从 pending 重新消费）</td><td>业务失败 <b>releaseQuietly 回补</b>预扣数</td></tr>
+      <tr><td><b>入口防护</b></td><td>课程未覆盖网关限流（可做加分扩展）</td><td>Sentinel 限流（40055）+ JWT 网关鉴权 + 幂等（40060）</td></tr>
+      <tr><td><b>数字口径</b></td><td>课程无严格压测数字</td><td>有可复跑的实测（docs/10：同机读饱和 ~3.5k~4.1k QPS；端到端 151 用户恰好 10 成功）</td></tr>
+    </table>
+    <div class="note ok"><b>一句话总结（背下来）：</b>黑马点评教的是<b>"怎么把 Redis 用到极致"</b>（Lua 原子、Stream 消费者组都是教学重点）；
+    本项目在此基础上把"<b>Redis 当预计数、DB 当真相</b>"做成了一条带对账的闭环——<b>能挡的量一样，但正确性不押在 Redis 上</b>。</div>
+  </div>
+</section>
+
+<!-- ================= 11. 面试话术 ================= -->
+<section id="interview">
+  <div class="sec-head"><div class="sec-no">11</div><h2>面试话术与追问树</h2></div>
+  <p class="sec-sub">"你了解黑马点评的秒杀吗？"——按"演进链"讲，比按"功能"讲高级得多。</p>
+
+  <div class="script">
+    <h3>🎤 60 秒标准答法</h3>
+    <p>
+      黑马点评的秒杀核心是<b>一条演进链</b>：最早直接查库下单，暴露了超卖和一人多单；
+      超卖用<b>乐观锁 CAS</b> 解决——把"库存大于 0"写进 UPDATE 条件，检查与扣减就没有缝隙了；
+      一人多单先靠 <b>synchronized 锁用户</b>（关键是锁要包住整个事务），但集群部署失效，
+      于是换成<b>分布式锁</b>——课程先手写 SETNX 版，踩了误删、不可重入、超时释放这些坑，最后结论是生产直接用 <b>Redisson</b>。
+      但锁是串行的，吞吐上不去，所以进一步把"库存判断 + 一人一单 + 扣减"整体搬进 <b>Redis Lua 脚本</b>，一次原子执行，
+      无效请求连数据库都不碰；最后一步是<b>异步秒杀</b>——Lua 里直接 <code>XADD</code> 到 <b>Redis Stream</b>，
+      用户秒回"抢购中"，消费者组在后台 <code>XREADGROUP</code> 落库、<code>XACK</code> 确认，
+      失败的消息留在 pending list 重试。整个优化可以概括成一句话：<b>把"判断资格"放进内存，把"真正下单"异步化。</b>
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>追问树（面试官往哪挖，答案是什么）</h3>
+    <table>
+      <tr><th style="width:38%">追问</th><th>要点</th></tr>
+      <tr><td>为什么用乐观锁不用悲观锁？</td><td>悲观锁（for update）串行等待，吞吐差；乐观锁失败即返回，秒杀场景"失败"是常态，这样最快</td></tr>
+      <tr><td>为什么从版本号法改成 stock &gt; 0？</td><td>版本号下"读到的版本必须没变过"太严格，并发失败率极高；判断"还有库存"只需 stock&gt;0，成功率高得多</td></tr>
+      <tr><td>synchronized 为什么要锁 intern 后的字符串？为什么锁要包住事务？</td><td>intern 复用常量池对象（同用户同一把锁）；锁若在事务提交前释放，后来者查不到未提交订单 → 重复下单</td></tr>
+      <tr><td>为什么释放锁要 Lua？</td><td>"判断是不是自己的锁 + 删除"必须原子，否则可能删掉别人的锁（超时换主场景）</td></tr>
+      <tr><td>Redisson 看门狗是什么？</td><td>未显式指定租期时默认 30s，业务没跑完每 10s 自动续期，防止"业务没完锁先过期"</td></tr>
+      <tr><td>为什么这个 Lua 脚本能同时防超卖和一人多单？</td><td>Redis 单线程执行脚本：三个判断和两个修改之间没有任何请求能插入</td></tr>
+      <tr><td>为什么用 Stream，不用 List / PubSub？</td><td>List 取走即丢、无法多消费者；PubSub 不持久化；Stream 有消费者组 + ACK + pending，消息不丢可重试</td></tr>
+      <tr><td>消息一直失败怎么办？（课程未覆盖，展示深度）</td><td>pending list 可见 + XCLAIM 转让重试；生产还要加死信队列与告警；本项目用"幂等消费 + Scheduler 兜底扫描"</td></tr>
+      <tr><td>Redis 挂了秒杀怎么办？（区分度题）</td><td>黑马方案不可用；本项目做了<b>降级直通 + 对账自愈</b>——可以顺势讲自己的项目（docs/11）</td></tr>
+    </table>
+  </div>
+
+  <div class="note"><b>事实边界（诚实声明）：</b>本页基于黑马程序员《Redis 分布式缓存实战》公开课程中秒杀章节的公开方案整理，细节以官方课程为准；
+    课程<b>未给出严格压测数字</b>，本页也未编造任何 QPS；不同版本课程在"阻塞队列 → Redis Stream"的细节上略有差异。
+    如果你本地部署了黑马点评，可以用本项目 docs/10 的 <code>loadtest.py</code> 以同口径压测对比（注意换机器当压测端）。</div>
+</section>
+
+<footer>
+  <div>📄 黑马点评 · 限时秒杀高并发图解（学习/面试对照材料，生成于 2026-10-10）</div>
+  <div style="margin-top:6px">相关阅读：
+    <a href="11-高并发处理全流程图解.html">docs/11 本项目高并发全流程（对照的另一半）</a> ·
+    <a href="09-高并发改造设计与验收.md">docs/09 改造设计与验收</a> ·
+    <a href="10-并发能力测试指南.md">docs/10 测试指南</a> ·
+    <a href="../README.md">README</a>
+  </div>
+  <div class="file-links">
+    <span>图 1 六代演进</span><span>图 2 超卖 vs 乐观锁</span><span>图 3 Redisson tryLock</span>
+    <span>图 4 Lua 预检</span><span>图 5 异步秒杀 Stream</span><span>图 6 双链路对照</span>
+  </div>
+</footer>
+
+</main>
+</body>
+</html>

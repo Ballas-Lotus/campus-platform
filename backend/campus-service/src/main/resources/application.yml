@@ -1,0 +1,133 @@
+server:
+  port: 9082
+
+spring:
+  application:
+    name: campus-service
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  mvc:
+    async:
+      # 阶段 20：SSE 名额信号长连接——必须显式放开异步超时（容器默认 30s 会把连接掐断）；
+      # 实际寿命由 SseEmitter 自身的 30 分钟上限控制，客户端重连即续期
+      request-timeout: 1900000
+  # 阶段 14：数据源切换为 ShardingSphere-JDBC（2 库 × 4 表 = 8 分片 + t_user 列加密）
+  # 驱动按 resources/shardingsphere-config.yaml 连接 campus_0 / campus_1；
+  # 单体库 campus_platform 原地保留为「单体基线」（阶段 15 对比与回滚用，业务不再连接）
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml
+    hikari:
+      # 阶段 14：分片后每条事务会占用 1 个外层连接（ShardingSphere 连接内部再分发到 ds_0/ds_1）
+      # 压测 100+ 并发时 20 会直接打爆 → 按最大压测并发放大
+      maximum-pool-size: 128
+      minimum-idle: 5
+      connection-timeout: 5000
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: campus123456
+      timeout: 3s
+      lettuce:
+        shutdown-timeout: 100ms
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+
+# 阶段 13：RocketMQ（复用本机 9876；topic/group 前缀 campus_* / campus-* 与 12306 隔离）
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: campus-producer
+    send-message-timeout: 3000
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+
+# ------------------------------------------------------------------
+# 校园平台自定义配置（service 侧：JWT 校验 + 预约业务规则）
+# ------------------------------------------------------------------
+campus:
+  jwt:
+    # secret/issuer 与 user/网关保持一致（服务内 UserTransmitFilter 纵深校验用）
+    secret: UEEc7i41Rq75WYgIiBk7C1HHIpA6kO5SjCF7v3sBl6gQftttH6qJeWU877jYgh-6IYG9vn9K9wGbaGgn7IaHJA
+    issuer: campus-platform
+    expire-seconds: 86400
+    session-ttl-seconds: 7200
+    renew-threshold-seconds: 1800
+  reservation:
+    # 体育馆每周预约上限（用户维度：所有场馆合计；2026-10-08 规则）
+    venue-weekly-limit: 4
+    # 体育馆单次预约时长上限（小时；图书馆为代码常量 4 小时；2026-10-08 规则）
+    venue-max-hours: 3
+    # ---------- 签到与违约规则（2026-10-08 业务调整）----------
+    checkin-before-minutes: 30
+    checkin-after-minutes: 15
+    noshow-penalty-hours: 24
+    # 临近取消惩罚（仅体育馆与讲座）；图书馆取消无任何惩罚
+    late-cancel-minutes: 30
+    late-cancel-penalty-minutes: 5
+  sentinel:
+    # 阶段 14：选课接口 QPS 阈值（超过即快速失败 40055；正常点击远低于此，压测可触发）
+    course-select-qps: 20
+  # 阶段 20/21：名额结构（阶段 21 起为"受理真相"：ACCEPT 原子裁决 + MQ 异步落库 + 补偿 + 超时裁决）
+  stock:
+    # 名额结构（campus:stock:{courseId}）TTL：写时滑动刷新；过期后按受理制真值重建即安全
+    key-ttl-seconds: 21600
+    # ---- 阶段 21 · 受理制 ----
+    # 受理链路开关：false = 一键回退到阶段 19/20 的"同步事务落库"老链路（写路径原样保留）
+    async-select-enabled: true
+    # 落库消息发送超时：宁可快速失败回滚（40056"未被受理"），不让用户干等
+    mq-send-timeout-ms: 300
+    # 未决受理超时上限：超过即按落库行 op_id 裁决（已生效→清账 / 未生效→补偿+回执）
+    pending-timeout-ms: 300000
+    # 受理台账 TTL（覆盖 MQ 全部重投递窗口 + 超时裁决期）
+    pend-ttl-seconds: 86400
+    # "已选集合"TTL（惰性按 DB 初始化；过期后下次受理重建）
+    sel-ttl-seconds: 86400
+    # L1 进程内缓存：TTL 把"漏信号"的陈旧窗口压到 ≤2s；条目上限防无界增长
+    l1-ttl-ms: 2000
+    l1-max-entries: 2000
+    # 实例内信号合并窗口：热班"连接数 × 信号数"的扇出放大削一个数量级
+    signal-coalesce-ms: 50
+    # 对账器（30s）：按 DB 真值纠偏 + 版本+1 + 推送修正信号
+    reconcile-enabled: true
+    reconcile-max-keys: 50
+    sse:
+      # 连接寿命 30 分钟（客户端重连即续期）；心跳 25s 防中间层空闲断连
+      emitter-timeout-ms: 1800000
+      heartbeat-ms: 25000
+      # 上限保护：超限返回业务错误 → 前端自动降级轮询
+      max-conns-per-instance: 5000
+      max-conns-per-user: 3
+      max-classes-per-conn: 200
+  # 阶段 17：预扣闸门（Redis 前置挡量；Redis 是「预计数」，MySQL 是「真相」）
+  prededuct:
+    # 初始化冗余比例：0 = 计数器严格等于 DB 真值（演示口径干净）；
+    # 生产建议 0.02~0.05 —— 留一点余量，避免 Redis 偏少时把库存"少卖"掉（放行多了由 DB 拒绝，无副作用）
+    redundancy-ratio: 0
+    # 对账纠偏阈值下限：吸收"已预扣、未提交"的在途噪音（实际阈值 = max(该值, 真值 × 20%)）
+    drift-threshold: 5
+    # 30 秒对账自愈开关（压测需要绝对干净的数字时可临时关闭）
+    reconcile-enabled: true
+  sharding:
+    # 阶段 14：分库分表观测接口的物理直连（绕过 ShardingSphere 数物理分片行数；
+    # 仅 /api/sharding/* 使用，不参与任何业务读写）
+    physical:
+      url0: jdbc:mysql://127.0.0.1:3308/campus_0?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      url1: jdbc:mysql://127.0.0.1:3308/campus_1?serverTimezone=Asia/Shanghai&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true
+      username: root
+      password: campus123456
+
+logging:
+  level:
+    com.campus: info
+    # ShardingSphere 的 SQL 日志（sql-show: true）——分片路由的现场证据
+    ShardingSphere-SQL: info

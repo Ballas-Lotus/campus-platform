@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>校园综合服务平台 · 高并发处理全流程（流程图 + 说人话 + 小林coding对照）</title>
+<!--
+  生成：2026-10-10（阶段 18 完成后）
+  定位：面向"理解"的图解页——每一节 = 流程图 + 说人话 + 小林coding知识点对照 + 实测数字
+  对照原文：https://xiaolincoding.com/redis/base/wath_is_redis.html
+            https://xiaolincoding.com/interview/mq.html
+  配套文档：docs/09（设计验收）· docs/10（测试指南）· docs/08（阶段 0~15 图解）
+-->
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#ffffff; --ink:#0f172a; --sub:#475569; --faint:#94a3b8;
+    --line:#e2e8f0; --blue:#2563eb; --blue-bg:#eff6ff; --green:#059669; --green-bg:#ecfdf5;
+    --violet:#7c3aed; --violet-bg:#f5f3ff; --amber:#d97706; --amber-bg:#fffbeb;
+    --red:#dc2626; --red-bg:#fef2f2; --code-bg:#0f172a; --code-ink:#e2e8f0;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",system-ui,-apple-system,"Noto Sans SC",sans-serif;
+    line-height:1.75; font-size:15px;
+  }
+  code,pre,.mono{font-family:Consolas,"JetBrains Mono","Courier New",monospace}
+
+  /* ---------- 顶部 Hero ---------- */
+  .hero{
+    background:
+      radial-gradient(1200px 400px at 15% -10%, rgba(37,99,235,.35), transparent 60%),
+      radial-gradient(900px 380px at 85% 0%, rgba(124,58,237,.30), transparent 60%),
+      linear-gradient(150deg,#0b1220 0%, #101c33 55%, #0b1220 100%);
+    color:#e6edf7; padding:54px 24px 46px; position:relative; overflow:hidden;
+  }
+  .hero::after{
+    content:""; position:absolute; inset:0; opacity:.05;
+    background-image:linear-gradient(#fff 1px, transparent 1px),linear-gradient(90deg,#fff 1px, transparent 1px);
+    background-size:36px 36px; pointer-events:none;
+  }
+  .hero-inner{max-width:1060px;margin:0 auto;position:relative;z-index:1}
+  .hero .kicker{
+    display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#9fb6dd;
+    border:1px solid rgba(159,182,221,.35);border-radius:999px;padding:4px 14px;margin-bottom:18px;
+  }
+  .hero h1{margin:0 0 10px;font-size:33px;letter-spacing:.5px;line-height:1.4}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,#7ab8ff,#b79cff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lead{margin:0;color:#b7c6de;max-width:860px;font-size:15px}
+  .hero .src{margin-top:14px;font-size:12.5px;color:#8ea6cc}
+  .hero .src a{color:#9ec2ff;text-decoration:none;border-bottom:1px dashed rgba(158,194,255,.5)}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .badge{
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+    color:#dbe7fa;border-radius:10px;padding:8px 14px;font-size:13px;
+  }
+  .badge b{color:#fff;font-size:15px;margin-right:4px}
+  .badge .ok{color:#7ef0c0}
+  main{max-width:1060px;margin:0 auto;padding:26px 20px 80px}
+
+  /* ---------- 顶部导航 ---------- */
+  nav.toc{
+    position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  nav.toc .row{max-width:1060px;margin:0 auto;padding:10px 20px;display:flex;gap:6px;flex-wrap:wrap}
+  nav.toc a{
+    text-decoration:none;color:var(--sub);font-size:13px;padding:5px 12px;border-radius:8px;
+    border:1px solid transparent;transition:.15s;white-space:nowrap;
+  }
+  nav.toc a:hover{background:var(--blue-bg);color:var(--blue);border-color:#dbeafe}
+
+  /* ---------- 章节 ---------- */
+  section{margin-top:46px;scroll-margin-top:64px}
+  .sec-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .sec-no{
+    flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--blue),var(--violet));color:#fff;font-weight:700;font-size:15px;
+  }
+  .sec-head h2{margin:0;font-size:23px}
+  .sec-sub{color:var(--faint);font-size:13px;margin:2px 0 18px 46px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:14px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .card h3{margin:0 0 10px;font-size:16.5px}
+  .card h4{margin:16px 0 8px;font-size:14.5px}
+
+  /* ---------- 小林 vs 项目 对照卡 ---------- */
+  .compare{display:grid;grid-template-columns:1fr 44px 1fr;gap:0;align-items:stretch;margin:14px 0}
+  @media (max-width:860px){.compare{grid-template-columns:1fr;gap:8px}.compare .arrow{display:none}}
+  .k-card,.p-card{border-radius:var(--radius);padding:16px 18px;font-size:13.5px}
+  .k-card{background:var(--blue-bg);border:1px solid #bfdbfe}
+  .p-card{background:var(--green-bg);border:1px solid #a7f3d0}
+  .k-card .tag,.p-card .tag{font-size:11.5px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:2px 10px;display:inline-block;margin-bottom:8px}
+  .k-card .tag{background:#dbeafe;color:#1d4ed8}
+  .p-card .tag{background:#d1fae5;color:#047857}
+  .k-card h4,.p-card h4{margin:2px 0 8px;font-size:14.5px}
+  .k-card p,.p-card p{margin:6px 0}
+  .compare .arrow{display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:20px}
+
+  /* ---------- 强调块 / 说人话 ---------- */
+  .note{border-left:4px solid var(--blue);background:#f8fafc;border-radius:0 10px 10px 0;padding:12px 16px;font-size:13.5px;color:var(--sub);margin:12px 0}
+  .note.warn{border-color:var(--amber);background:var(--amber-bg)}
+  .note.danger{border-color:var(--red);background:var(--red-bg)}
+  .note.ok{border-color:var(--green);background:var(--green-bg)}
+  .note b{color:var(--ink)}
+
+  .say{background:#fffbeb;border:1px solid #fde68a;border-left:5px solid #f59e0b;border-radius:0 12px 12px 0;padding:13px 17px;margin:12px 0;font-size:13.8px;color:#713f12}
+  .say .st{display:block;font-size:11.5px;font-weight:800;letter-spacing:2px;color:#b45309;margin-bottom:4px}
+  .say b{color:#431407}
+
+  /* ---------- 代码 ---------- */
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:14px 16px;font-size:12.8px;line-height:1.7;overflow-x:auto;margin:10px 0}
+  pre .c{color:#7c8db5}
+  pre .k{color:#7ab8ff}
+  pre .s{color:#7ef0c0}
+  code.inl{background:#eef2ff;color:#3730a3;padding:1px 7px;border-radius:6px;font-size:12.8px}
+
+  /* ---------- 表格 ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13.2px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:#f1f5f9;color:var(--ink);font-weight:600}
+  tr:nth-child(even) td{background:#fafcff}
+  td .ok{color:var(--green);font-weight:700}
+  td .no{color:var(--red);font-weight:700}
+  td code{font-size:12.2px;background:#eef2ff;color:#3730a3;padding:0 5px;border-radius:5px}
+
+  /* ---------- 流程图容器 ---------- */
+  .fig{background:#fbfdff;border:1px solid var(--line);border-radius:var(--radius);padding:8px 6px 2px;margin:14px 0}
+  .fig svg{width:100%;height:auto;display:block}
+  .fig .cap{text-align:center;font-size:12.5px;color:var(--faint);padding:6px 12px 10px}
+  svg text{font-family:"PingFang SC","Microsoft YaHei",Consolas,sans-serif}
+  .bx{fill:#fff;stroke:#cbd5e1;stroke-width:1.4}
+  .bx-blue{fill:#eff6ff;stroke:#93c5fd}
+  .bx-green{fill:#ecfdf5;stroke:#6ee7b7}
+  .bx-violet{fill:#f5f3ff;stroke:#c4b5fd}
+  .bx-amber{fill:#fffbeb;stroke:#fcd34d}
+  .bx-red{fill:#fef2f2;stroke:#fca5a5}
+  .bx-gray{fill:#f8fafc;stroke:#cbd5e1}
+  .bx-dark{fill:#0f172a;stroke:#334155}
+  .t{font-size:13.2px;fill:#0f172a;font-weight:600}
+  .t-b{font-size:13.2px;fill:#1d4ed8;font-weight:700}
+  .t-w{font-size:13.2px;fill:#f1f5f9;font-weight:700}
+  .t-r{font-size:13.2px;fill:#b91c1c;font-weight:700}
+  .s{font-size:11.2px;fill:#64748b}
+  .s-w{font-size:11.2px;fill:#cbd5e1}
+  .s-r{font-size:11.2px;fill:#dc2626}
+  .s-g{font-size:11.2px;fill:#059669}
+  .cnt{font-size:13px;fill:#1d4ed8;font-weight:800}
+  .ln{stroke:#94a3b8;stroke-width:1.6;fill:none;marker-end:url(#arr)}
+  .ln-d{stroke:#94a3b8;stroke-width:1.4;fill:none;stroke-dasharray:5 4;marker-end:url(#arr)}
+  .ln-r{stroke:#dc2626;stroke-width:1.5;fill:none;marker-end:url(#arrR)}
+  .ln-g{stroke:#059669;stroke-width:1.5;fill:none;marker-end:url(#arrG)}
+  .ln-a{stroke:#d97706;stroke-width:1.5;fill:none;stroke-dasharray:5 4;marker-end:url(#arrA)}
+  .ln-v{stroke:#7c3aed;stroke-width:1.5;fill:none;marker-end:url(#arrV)}
+  .dia{fill:#fffbeb;stroke:#f59e0b;stroke-width:1.5}
+  .lb-r{font-size:11px;fill:#dc2626;font-weight:600}
+  .lb-g{font-size:11px;fill:#059669;font-weight:600}
+  .lb-a{font-size:11px;fill:#b45309;font-weight:600}
+
+  /* ---------- 面试话术 ---------- */
+  .script{background:#0f172a;color:#dbeafe;border-radius:var(--radius);padding:22px 26px;font-size:14px;line-height:2}
+  .script h3{margin:0 0 10px;color:#7ab8ff;font-size:16px}
+  .script b{color:#7ef0c0}
+  .script .warn2{color:#fcd34d}
+
+  footer{margin-top:60px;border-top:1px solid var(--line);padding-top:20px;color:var(--faint);font-size:13px}
+  footer a{color:var(--blue);text-decoration:none}
+  .file-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .file-links span{background:#f1f5f9;border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12.5px;color:var(--sub);font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+
+<!-- 共享箭头标记 -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#059669"/></marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#d97706"/></marker>
+    <marker id="arrV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker>
+  </defs>
+</svg>
+
+<!-- ================= HERO ================= -->
+<div class="hero">
+  <div class="hero-inner">
+    <span class="kicker">🏫 校园综合服务平台 · 截至阶段 18 · 高并发处理全流程</span>
+    <h1>高并发到底是怎么"扛"住的？<br><em>一条请求的 6 道关</em>：流程图 + 说人话 + 小林coding 对照</h1>
+    <p class="lead">
+      这份图解只回答一个问题：<b>这个项目的请求，是怎么被一层层处理掉的</b>。
+      每一节的配方都一样：先一张流程图（请求怎么走）→ 再说人话（一个生活比喻）→
+      再对照小林coding 的知识点（他讲了什么 → 我们做了什么）→ 最后给实测数字（别信嘴，看数据）。
+    </p>
+    <div class="src">
+      📚 对照原文：
+      <a href="https://xiaolincoding.com/redis/base/wath_is_redis.html" target="_blank" rel="noopener">什么是 Redis？</a> ·
+      <a href="https://xiaolincoding.com/interview/mq.html" target="_blank" rel="noopener">消息队列面试题</a>
+      ｜ 路线怎么对上：见第 1 节
+    </div>
+    <div class="badges">
+      <span class="badge">🛡️ 六道关 <b>鉴权→限流→幂等→缓存/闸门→DB→MQ</b></span>
+      <span class="badge">🚀 读缓存 <b>25.63ms → 1.0ms</b> <span class="ok">✓ 25.6×</span></span>
+      <span class="badge">🔥 写挡量 <b>1000 并发 → 990 挡 / 10 进库</b></span>
+      <span class="badge">🔁 幂等 <b>100 并发 → 99×40060</b></span>
+      <span class="badge">🔒 锁 <b>违例 0</b></span>
+      <span class="badge">⚡ 同机读饱和 <b>~3.5k~4.1k QPS</b></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= NAV ================= -->
+<nav class="toc">
+  <div class="row">
+    <a href="#route">🗺️ 小林路线 → 本项目</a>
+    <a href="#funnel">🕳️ 总览：六道关</a>
+    <a href="#read">🚀 读路径</a>
+    <a href="#write">🔥 写路径</a>
+    <a href="#heal">🩺 对账自愈</a>
+    <a href="#control">🔒 并发控制</a>
+    <a href="#mq">📨 MQ</a>
+    <a href="#truth">🗄️ 真相层</a>
+    <a href="#evidence">📊 实测与复现</a>
+    <a href="#script">🎤 面试话术</a>
+  </div>
+</nav>
+
+<main>
+
+<!-- ================= 1. 路线对照 ================= -->
+<section id="route">
+  <div class="sec-head"><div class="sec-no">1</div><h2>小林coding 技术路线 → 本项目的落点</h2></div>
+  <p class="sec-sub">他的路线是"先 Redis、后 MQ、再回数据库"；这份图解按同样的顺序组织，每一站都能跳到对应章节。</p>
+
+  <div class="card">
+    <table>
+      <tr><th style="width:26%">小林coding 路线站</th><th style="width:34%">他讲的知识点</th><th>本项目落点（本页章节）</th></tr>
+      <tr>
+        <td rowspan="6"><b>《什么是 Redis》</b><br><span class="s">缓存 → 三兄弟 → 一致性 → 锁</span></td>
+        <td>Redis 为什么快：纯内存、单线程免锁竞争、IO 多路复用、Lua 原子执行</td>
+        <td><a href="#read">§3 读路径</a> 与 <a href="#write">§4 预扣闸门</a>——<b>把"多次网络往返"压成"一次原子执行"</b></td>
+      </tr>
+      <tr><td>缓存穿透（查不存在的 key）</td><td>§3：布隆过滤器 + 空值回填</td></tr>
+      <tr><td>缓存击穿（热点 key 过期瞬间）</td><td>§3：互斥回源（防击穿锁）</td></tr>
+      <tr><td>缓存雪崩（大批 key 同时过期）</td><td>§3：TTL 分档 + 每 key 互斥回源（诚实注明：未加随机抖动）</td></tr>
+      <tr><td>缓存一致性：Cache Aside / 先更新库再删缓存</td><td>§3：写后失效，且挂在<b>事务提交之后</b>（afterCommit）</td></tr>
+      <tr><td>分布式锁：SET NX + Lua 释放</td><td><a href="#control">§6 并发控制</a>：CampusLock / RedisCampusLock</td></tr>
+      <tr>
+        <td><b>《消息队列面试题》</b></td>
+        <td>削峰填谷、重复消费→幂等、延时消息、消息丢失与兜底</td>
+        <td><a href="#mq">§7 MQ</a>：延时判爽约 + 消费端幂等 + Scheduler 兜底</td>
+      </tr>
+      <tr>
+        <td><b>回到数据库</b><br><span class="s">（MySQL 篇散见）</span></td>
+        <td>唯一索引、行锁、原子条件更新</td>
+        <td><a href="#truth">§8 真相层</a>：四道数据库防线——最后一道、也是唯一不可绕过的一道</td>
+      </tr>
+    </table>
+    <div class="note"><b>怎么读：</b>想快速了解全貌 → 直接看 <a href="#funnel">第 2 节总览图</a>；想对照知识点 → 按上表逐站跳；想看数字 → 直接翻到 <a href="#evidence">第 9 节实测汇总</a>。</div>
+  </div>
+</section>
+
+<!-- ================= 2. 漏斗总览 ================= -->
+<section id="funnel">
+  <div class="sec-head"><div class="sec-no">2</div><h2>总览：高并发就是"漏斗"，六道关层层筛</h2></div>
+  <p class="sec-sub">请求像过安检：每一层用更便宜的手段，把请求处理掉、或礼貌地劝返。</p>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    高并发不是"让每个请求都跑得飞快"，而是<b>漏斗</b>：在请求到达数据库之前，用一层层更便宜的关卡把它处理掉或拒绝掉。
+    越靠前越便宜——<b>浏览器 &gt; 网关（纯内存判断）&gt; Redis（内存往返，微秒~毫秒）&gt; MySQL（磁盘 + 锁，毫秒~几十毫秒）</b>。
+    优化的本质 = <b>把请求挡在更便宜的一层</b>。
+  </div>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 710" role="img" aria-label="请求旅程六道关漏斗图">
+      <!-- 顶部场景 -->
+      <rect x="290" y="16" width="440" height="50" rx="25" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+      <text class="t-b" x="510" y="47" text-anchor="middle">🧑🤝🧑 以「1000 人抢 10 个名额」为例，往下逐层过筛</text>
+      <line class="ln" x1="510" y1="66" x2="510" y2="88"/>
+
+      <!-- ① 网关 -->
+      <rect class="bx-blue" x="170" y="92" width="680" height="64" rx="14" stroke-width="1.5"/>
+      <circle cx="206" cy="124" r="16" fill="#dbeafe"/><text class="cnt" x="206" y="129" text-anchor="middle">1</text>
+      <text class="t" x="238" y="118">网关鉴权 · JWT 学生证</text>
+      <text class="s" x="238" y="139">没带学生证 → 门口直接劝返，根本不进楼</text>
+      <rect x="756" y="108" width="78" height="32" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+      <text class="s-r" x="795" y="128" text-anchor="middle" style="font-weight:700">40100</text>
+      <line class="ln" x1="510" y1="156" x2="510" y2="178"/>
+
+      <!-- ② 限流 -->
+      <rect class="bx-blue" x="170" y="182" width="680" height="64" rx="14" stroke-width="1.5"/>
+      <circle cx="206" cy="214" r="16" fill="#dbeafe"/><text class="cnt" x="206" y="219" text-anchor="middle">2</text>
+      <text class="t" x="238" y="208">Sentinel 限流</text>
+      <text class="s" x="238" y="229">地铁限流栏杆：超过阈值快速失败，保住后面所有人的体验</text>
+      <rect x="756" y="198" width="78" height="32" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+      <text class="s-r" x="795" y="218" text-anchor="middle" style="font-weight:700">40055</text>
+      <line class="ln" x1="510" y1="246" x2="510" y2="268"/>
+
+      <!-- ③ 幂等 -->
+      <rect class="bx-blue" x="170" y="272" width="680" height="64" rx="14" stroke-width="1.5"/>
+      <circle cx="206" cy="304" r="16" fill="#dbeafe"/><text class="cnt" x="206" y="309" text-anchor="middle">3</text>
+      <text class="t" x="238" y="298">接口幂等 · @CampusIdempotent</text>
+      <text class="s" x="238" y="319">同一张运单号只发一次货：重复提交直接劝返，不重复占座</text>
+      <rect x="756" y="288" width="78" height="32" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+      <text class="s-r" x="795" y="308" text-anchor="middle" style="font-weight:700">40060</text>
+      <line class="ln" x1="510" y1="336" x2="510" y2="358"/>
+
+      <!-- ④ 缓存 / 闸门（分岔·核心） -->
+      <rect class="bx-violet" x="170" y="362" width="680" height="86" rx="14" stroke-width="1.8"/>
+      <circle cx="206" cy="405" r="16" fill="#ede9fe"/><text class="cnt" x="206" y="410" text-anchor="middle" style="fill:#7c3aed">4</text>
+      <text class="t" x="238" y="388">分岔：读走「缓存四步」，写走「预扣闸门」—— 最核心的一层</text>
+      <text class="s" x="238" y="410">读：布隆 → 缓存 →（未命中才）回源，84%+ 的读请求不碰数据库</text>
+      <text class="s" x="238" y="430">写：Redis Lua 原子预扣，名额不足当场劝返 —— 990/1000 在这一层被挡</text>
+      <rect x="756" y="389" width="78" height="32" rx="8" fill="#fef2f2" stroke="#fca5a5"/>
+      <text class="s-r" x="795" y="409" text-anchor="middle" style="font-weight:700">40052</text>
+      <line class="ln" x1="510" y1="448" x2="510" y2="470"/>
+
+      <!-- ⑤ DB 兜底 -->
+      <rect class="bx-gray" x="170" y="474" width="680" height="64" rx="14" stroke-width="1.5"/>
+      <circle cx="206" cy="506" r="16" fill="#e2e8f0"/><text class="cnt" x="206" y="511" text-anchor="middle" style="fill:#475569">5</text>
+      <text class="t" x="238" y="500">数据库四道防线（真相层）</text>
+      <text class="s" x="238" y="521">条件更新 / 唯一索引 / 行锁 / 位图 —— 只有放行的请求才会走到这里</text>
+      <rect x="756" y="490" width="78" height="32" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
+      <text class="s" x="795" y="510" text-anchor="middle" style="font-weight:700;fill:#475569">最终裁决</text>
+      <line class="ln" x1="510" y1="538" x2="510" y2="560"/>
+
+      <!-- ⑥ MQ -->
+      <rect class="bx-green" x="170" y="564" width="680" height="64" rx="14" stroke-width="1.5"/>
+      <circle cx="206" cy="596" r="16" fill="#d1fae5"/><text class="cnt" x="206" y="601" text-anchor="middle" style="fill:#047857">6</text>
+      <text class="t" x="238" y="590">MQ 异步与延时（削峰）</text>
+      <text class="s" x="238" y="611">奶茶店取号：先收单、后台慢慢做；延时消息到点判爽约</text>
+      <rect x="756" y="580" width="78" height="32" rx="8" fill="#ecfdf5" stroke="#6ee7b7"/>
+      <text class="s-g" x="795" y="600" text-anchor="middle" style="font-weight:700">幂等消费</text>
+      <line class="ln" x1="510" y1="628" x2="510" y2="648"/>
+
+      <!-- 结果 -->
+      <rect x="310" y="652" width="400" height="44" rx="22" fill="#065f46"/>
+      <text x="510" y="679" text-anchor="middle" style="font-size:13.5px;fill:#ecfdf5;font-weight:700">🎯 最终落库：恰好 10 条（0 超卖 · 0 重复 · 0 系统异常）</text>
+    </svg>
+    <div class="cap">图 1 · 一条写请求的六道关：每层都在"更便宜的地方"解决问题。读请求走 1→2→3→④读侧→5。</div>
+  </div>
+
+  <div class="note ok">
+    <b>拒绝也是一种服务：</b>990 个抢不到名额的同学，在 Redis 一层（微秒级内存判定）就被告知"手慢了"，
+    而不是排 30 秒队后超时——<b>快速失败，比让用户干等更善良</b>，也把数据库保护得死死的。
+  </div>
+</section>
+
+<!-- ================= 3. 读路径 ================= -->
+<section id="read">
+  <div class="sec-head"><div class="sec-no">3</div><h2>读路径：四步把请求挡在数据库之外</h2></div>
+  <p class="sec-sub">🧭 小林路线 · Redis 篇 → 缓存三兄弟 + 缓存一致性。读请求占大多数，也最好优化。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 600" role="img" aria-label="读路径四步流程图">
+      <!-- 入口 -->
+      <rect class="bx-gray" x="80" y="18" width="260" height="54" rx="12"/>
+      <text class="t" x="210" y="50" text-anchor="middle">读请求：查时段 / 列表 / 概览</text>
+      <line class="ln" x1="210" y1="72" x2="210" y2="102"/>
+
+      <!-- ① 布隆 -->
+      <polygon class="dia" points="80,158 210,106 340,158 210,210"/>
+      <text class="t" x="210" y="150" text-anchor="middle">① 布隆过滤器</text>
+      <text class="s" x="210" y="168" text-anchor="middle">这个 id 存在吗？</text>
+      <line class="ln-r" x1="340" y1="158" x2="632" y2="158"/>
+      <text class="lb-r" x="486" y="148" text-anchor="middle">说「不存在」</text>
+      <rect class="bx-red" x="640" y="126" width="330" height="64" rx="12"/>
+      <text class="t-r" x="805" y="152" text-anchor="middle">直接拒绝 · 2ms</text>
+      <text class="s" x="805" y="172" text-anchor="middle">一定不存在：不查库、不查缓存（防穿透）</text>
+      <line class="ln" x1="210" y1="210" x2="210" y2="240"/>
+
+      <!-- ② 缓存 -->
+      <polygon class="dia" points="80,296 210,244 340,296 210,348"/>
+      <text class="t" x="210" y="288" text-anchor="middle">② Redis 缓存命中？</text>
+      <text class="s" x="210" y="306" text-anchor="middle">safeGet 读透</text>
+      <line class="ln-g" x1="340" y1="296" x2="632" y2="296"/>
+      <text class="lb-g" x="486" y="286" text-anchor="middle">命中 84%+</text>
+      <rect class="bx-green" x="640" y="264" width="330" height="64" rx="12"/>
+      <text class="t" x="805" y="290" text-anchor="middle" style="fill:#047857">直接返回 · 1ms 级</text>
+      <text class="s" x="805" y="310" text-anchor="middle">工作台概览 25.6ms → 1.0ms（25.6×）</text>
+      <line class="ln" x1="210" y1="348" x2="210" y2="378"/>
+
+      <!-- ③ 防击穿 -->
+      <polygon class="dia" points="80,434 210,382 340,434 210,486"/>
+      <text class="t" x="210" y="426" text-anchor="middle">③ 抢到防击穿锁？</text>
+      <text class="s" x="210" y="444" text-anchor="middle">SET NX 互斥回源</text>
+      <line class="ln-a" x1="340" y1="434" x2="632" y2="434"/>
+      <text class="lb-a" x="486" y="424" text-anchor="middle">没抢到</text>
+      <rect class="bx-amber" x="640" y="402" width="330" height="64" rx="12"/>
+      <text class="t" x="805" y="428" text-anchor="middle" style="fill:#b45309">睡 40ms → 重读缓存</text>
+      <text class="s" x="805" y="448" text-anchor="middle">击穿抑制：同一 key 只放一个请求去回源</text>
+      <line class="ln" x1="210" y1="486" x2="210" y2="512"/>
+
+      <!-- ④ 回源 -->
+      <rect class="bx-blue" x="80" y="516" width="260" height="64" rx="12"/>
+      <text class="t" x="210" y="540" text-anchor="middle">④ 回源 MySQL → 回填缓存</text>
+      <text class="s" x="210" y="560" text-anchor="middle">查不到的也回填「查无」标记（防穿透）</text>
+
+      <!-- 写后失效 -->
+      <rect x="640" y="516" width="330" height="64" rx="12" fill="#fff" stroke="#c4b5fd" stroke-width="1.4" stroke-dasharray="6 4"/>
+      <text class="t" x="805" y="540" text-anchor="middle" style="fill:#6d28d9">写路径：提交后删缓存</text>
+      <text class="s" x="805" y="560" text-anchor="middle">afterCommit —— 防止旧值被并发回源重新贴回去</text>
+    </svg>
+    <div class="cap">图 2 · 读路径四步：布隆挡穿透 → 缓存挡回源 → 锁挡击穿 → 最后才轮到数据库。写路径反向通知：提交后删缓存。</div>
+  </div>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    缓存 = 前台放一箱常用资料，找资料先翻前台；<b>布隆</b> = 门口保安，记性极好——他说"没这本书"就一定没有（防穿透）；
+    <b>防击穿</b> = 资料被撕掉的瞬间，只放<b>一个人</b>进档案室去取，其他人在门口等 40ms；
+    <b>空值回填</b> = 查不到的也贴一张"查无此页"的条，省得人人跑一趟档案室；
+    <b>写后失效</b> = 档案改了就把前台那页撕掉——而且是<b>等档案改完（事务提交）再撕</b>。
+  </div>
+
+  <div class="note ok">
+    <b>阶段 19 增补（读模型升级）</b>：教学班列表这一层又往前走了一步——拆成
+    <b>静态信息</b>（名称/教师/时间，TTL 600s，选课退课<b>不再失效它</b>）+
+    <b>动态余量 Hash</b>（field=classId → 剩余名额，TTL 120s，写路径提交后 <b>HINCRBY 增量维护</b>、不再整键失效），
+    读列表用一次 <b>pipeline</b> 合并两者；Hash 过期/漂移由"读回源重建 + 30 秒对账"自愈。
+    对照实测：写后失效 <b>21.4ms / 40 次回源</b> → 写后增量 <b>3.05ms / 0 次回源</b>，
+    且余量变化<b>写后立即可见</b>（162 → 161 不经过回源）。开抢前还可「窗口预热」热门课程。
+    详见 [docs/13](13-读模型与快路径升级（阶段 19）.md)。
+  </div>
+
+  <div class="card">
+    <h3>缓存三兄弟：小林讲的三个"坑"，逐个拆</h3>
+    <table>
+      <tr><th style="width:20%">场景（小林）</th><th style="width:26%">说人话</th><th style="width:30%">本项目对策</th><th>实测 / 备注</th></tr>
+      <tr>
+        <td><b>穿透</b><br>查一个根本不存在的 id</td>
+        <td>每次都去档案室找一个没有的人，档案室被白跑无数趟</td>
+        <td>布隆过滤器（Redis 位图 + Lua，实算 <b>m=191,702 位 / k=7</b>，约 24KB）+ 空值回填（<code>NULL_MARKER</code>）</td>
+        <td>探针 <b>2ms</b> 返回，<span class="ok">不查库不查缓存</span></td>
+      </tr>
+      <tr>
+        <td><b>击穿</b><br>热点 key 过期瞬间，N 个请求同时回源</td>
+        <td>资料被撕了，1000 个人同时冲进档案室——档案室被挤爆</td>
+        <td><code>safeGet</code> 互斥回源：抢锁（SET NX）成功者回源 + 回填，其他人睡 40ms 后重读缓存</td>
+        <td>抢锁 / 抑制次数都记在「🚀 缓存」页指标里</td>
+      </tr>
+      <tr>
+        <td><b>雪崩</b><br>大批 key 同时过期</td>
+        <td>别让整栋楼的资料同时"失效"</td>
+        <td>TTL 分档（30s / 60s）+ 每 key 互斥回源把回源压成串行；<b>诚实注明：未加随机抖动，是可加的生产增强点</b></td>
+        <td>规则表见「🚀 缓存」页（6 类 key 各自 TTL）</td>
+      </tr>
+    </table>
+
+    <h4>缓存一致性（小林：Cache Aside，先更新库、再删缓存）</h4>
+    <p style="font-size:13.5px;color:var(--sub);margin:6px 0">
+      本项目把"删缓存"挂在 <code class="inl">TransactionSynchronization.afterCommit</code> 上，堵死这个经典竞态：
+    </p>
+    <pre>
+<span class="c">// 若"先删缓存、后提交"，会出现：</span>
+T1 更新数据库(未提交) → T1 删缓存 → T2 回源读到<span class="k">旧值</span>并写回缓存 → T1 提交
+<span class="c">// 结果：缓存里长期是旧值（直到 TTL 到期）。挂到提交之后即可消除。</span></pre>
+
+    <div class="note warn">
+      <b>反例（本节课最值钱的一条）：</b>单资源时段查询——无缓存 <b>1.10ms</b> → 有缓存 <b>2.30ms</b>，<b>反而慢了 1ms</b>
+      （缓存往返 + 反序列化的开销 &gt; 一次走索引回源的开销）。为什么还保留缓存？因为它是<b>最热</b>的 key：
+      1000 个并发读同一资源时，缓存把数据库连接占用<b>从 1000 次降到 1 次</b>——<b>连接池才是稀缺资源</b>。
+      <br>口诀：<b>回源成本必须大于缓存往返成本</b>；看回源成本、看并发压力，不看直觉。
+    </div>
+  </div>
+
+  <div class="compare">
+    <div class="k-card">
+      <span class="tag">小林怎么说</span>
+      <h4>Redis 为什么快？</h4>
+      <p>纯内存操作、单线程避免锁竞争、IO 多路复用；再加上 <b>Lua 脚本原子执行</b>——一段脚本里的多条命令不会被其他请求插队。</p>
+    </div>
+    <div class="arrow">➜</div>
+    <div class="p-card">
+      <span class="tag">本项目怎么做</span>
+      <h4>把"判断 + 扣减"压成一次原子执行</h4>
+      <p>预扣、幂等、布隆探针、锁释放……<b>全部写成 Lua 一次往返</b>：不是把收银员变多，而是把"结账动作"打包成一步做完，不给你插队的机会。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. 写路径 ================= -->
+<section id="write">
+  <div class="sec-head"><div class="sec-no">4</div><h2>写路径：预扣闸门，99% 的无效请求进不了数据库</h2></div>
+  <p class="sec-sub">🧭 对标 12306 令牌桶；写请求受"唯一真相的串行点"约束，挡量比提速更重要。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 720" role="img" aria-label="写路径预扣闸门流程图">
+      <!-- 入口 -->
+      <rect class="bx-gray" x="70" y="16" width="300" height="50" rx="12"/>
+      <text class="t" x="220" y="47" text-anchor="middle">写请求：选课 / 预约时段</text>
+      <line class="ln" x1="220" y1="66" x2="220" y2="90"/>
+
+      <!-- ① 限流 -->
+      <rect class="bx-blue" x="70" y="94" width="300" height="56" rx="12"/>
+      <text class="t" x="220" y="118" text-anchor="middle">① Sentinel 限流</text>
+      <text class="s" x="220" y="137" text-anchor="middle">超阈值 → 40055 快速失败</text>
+      <rect class="bx-gray" x="560" y="94" width="400" height="56" rx="12"/>
+      <text class="s" x="760" y="118" text-anchor="middle" style="font-weight:700;fill:#475569">说人话：地铁限流栏杆</text>
+      <text class="s" x="760" y="137" text-anchor="middle">洪峰时快速拒绝，保住后面所有正常请求</text>
+      <line class="ln" x1="220" y1="150" x2="220" y2="174"/>
+
+      <!-- ② 幂等 -->
+      <rect class="bx-blue" x="70" y="178" width="300" height="56" rx="12"/>
+      <text class="t" x="220" y="202" text-anchor="middle">② 接口幂等 @CampusIdempotent</text>
+      <text class="s" x="220" y="221" text-anchor="middle">两态 Lua：CONSUMING → CONSUMED</text>
+      <rect class="bx-gray" x="560" y="178" width="400" height="56" rx="12"/>
+      <text class="s" x="760" y="202" text-anchor="middle" style="font-weight:700;fill:#475569">说人话：同一张运单号只发一次货</text>
+      <text class="s" x="760" y="221" text-anchor="middle">重复提交 → 40060（5 秒窗口，详见 §6）</text>
+      <line class="ln" x1="220" y1="234" x2="220" y2="258"/>
+
+      <!-- ③ 预扣闸门 -->
+      <rect class="bx-violet" x="70" y="262" width="300" height="84" rx="12" stroke-width="1.8"/>
+      <text class="t" x="220" y="286" text-anchor="middle" style="fill:#6d28d9">③ 预扣闸门（阶段 17 核心）</text>
+      <text class="s" x="220" y="306" text-anchor="middle">Redis Lua：先全部校验、再逐个扣减</text>
+      <text class="s" x="220" y="325" text-anchor="middle">名额不足 → 40052 · 微秒级内存判定</text>
+      <rect class="bx-red" x="560" y="262" width="400" height="84" rx="12"/>
+      <text class="s-r" x="760" y="286" text-anchor="middle" style="font-weight:700">实测：1000 并发 → 990 在这一层被挡</text>
+      <text class="s" x="760" y="306" text-anchor="middle">只有 10 个拿到「号牌」进入数据库</text>
+      <text class="s" x="760" y="325" text-anchor="middle">被挡的请求：微秒级返回，从不占用数据库连接</text>
+      <line class="ln" x1="220" y1="346" x2="220" y2="370"/>
+
+      <!-- ④ 事务 -->
+      <rect class="bx-gray" x="70" y="374" width="300" height="84" rx="12"/>
+      <text class="t" x="220" y="398" text-anchor="middle">④ 事务内：条件更新 + 唯一索引 + 行锁</text>
+      <text class="s" x="220" y="418" text-anchor="middle" style="font-family:Consolas,monospace">UPDATE ... WHERE selected &lt; capacity</text>
+      <text class="s" x="220" y="437" text-anchor="middle">（真相层：数据库说了算）</text>
+      <rect class="bx-amber" x="560" y="374" width="400" height="84" rx="12"/>
+      <text class="s" x="760" y="398" text-anchor="middle" style="font-weight:700;fill:#b45309">失败（真满 / 冲突）→ 回补 INCRBY</text>
+      <text class="s" x="760" y="418" text-anchor="middle">把号牌还回去——不回补就会「少卖」</text>
+      <text class="s" x="760" y="437" text-anchor="middle">实测：本轮回补 0 次（全被闸门挡在外面）</text>
+      <line class="ln-a" x1="370" y1="416" x2="556" y2="416"/>
+      <text class="lb-a" x="463" y="406" text-anchor="middle">DB 拒绝时</text>
+      <line class="ln" x1="220" y1="458" x2="220" y2="482"/>
+
+      <!-- ⑤ 提交后 -->
+      <rect class="bx-green" x="70" y="486" width="300" height="56" rx="12"/>
+      <text class="t" x="220" y="510" text-anchor="middle" style="fill:#047857">⑤ 提交后：失效缓存 + 发 MQ 事件</text>
+      <text class="s" x="220" y="529" text-anchor="middle">TransactionSynchronization.afterCommit</text>
+      <rect class="bx-gray" x="560" y="486" width="400" height="56" rx="12"/>
+      <text class="s" x="760" y="510" text-anchor="middle" style="font-weight:700;fill:#475569">说人话：档案改了 → 撕掉前台那页</text>
+      <text class="s" x="760" y="529" text-anchor="middle">顺手给 MQ 发一条「订单已创建」</text>
+      <line class="ln" x1="220" y1="542" x2="220" y2="566"/>
+
+      <!-- 结果 -->
+      <rect x="70" y="570" width="300" height="50" rx="12" fill="#065f46"/>
+      <text class="t-w" x="220" y="601" text-anchor="middle">✅ 返回成功（名额 -1）</text>
+
+      <!-- 关键设计 -->
+      <rect x="70" y="644" width="890" height="56" rx="12" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.4"/>
+      <text x="515" y="668" text-anchor="middle" style="font-size:13px;fill:#5b21b6;font-weight:700">★ 关键设计：闸门放在事务之外 —— 990 个被拒请求根本不向连接池借连接</text>
+      <text class="s" x="515" y="688" text-anchor="middle">（Spring @Transactional 一进方法就占连接；先开事务再判定 = 连接池先被打爆，见 docs/09 §3.7）</text>
+    </svg>
+    <div class="cap">图 3 · 写路径：前两层快速失败 → 闸门在 Redis 内存里挡掉 99% → 只有拿到"号牌"的请求进事务碰数据库。</div>
+  </div>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    <b>预扣闸门</b> = 教室门口发号牌：1000 个人来抢 10 个座，990 个人在门口就被劝回（Redis 内存级判定，微秒）；
+    只有 10 个拿着号牌进教室（数据库）。<b>回补</b> = 号牌发错了要收回来（数据库说"其实满了"，就把预扣的还回去）；
+    <b>对账</b> = 每天晚上核对账本，Redis 是草稿纸、数据库是账本。
+  </div>
+
+  <div class="card">
+    <h3>预扣闸门的三条防线（campus.prededuct.*）</h3>
+    <div class="kv" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px">
+        <b>① 预扣</b><br><span style="color:var(--sub)">Lua 内"先全部校验、再逐个扣减"——多时间片预约天然<b>全成或全败</b>，不会扣一半卡住</span>
+      </div>
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px">
+        <b>② 回补</b><br><span style="color:var(--sub)">数据库拒绝时 <code>INCRBY</code> 归还——不回补就会"少卖"（Redis 扣了、库里其实空着）</span>
+      </div>
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13px">
+        <b>③ 对账自愈</b><br><span style="color:var(--sub)">每 30 秒比对 Redis 与 DB 真值，偏差超阈值（max(5, 真值×20%)）即纠偏；多实例用分布式锁只跑一个</span>
+      </div>
+    </div>
+
+    <h4>与 12306 令牌桶的对照（诚实版）</h4>
+    <table>
+      <tr><th>维度</th><th>12306 令牌桶（学习版实现）</th><th>本项目预扣闸门</th></tr>
+      <tr><td>Redis 角色</td><td><b>唯一真相</b>（靠"删桶重建"自愈）</td><td><b>预计数</b>——真相始终在 MySQL（唯一索引 + 条件更新）</td></tr>
+      <tr><td>Redis 不可用</td><td>取不到令牌 → 购票不可用</td><td><b>自动降级直通数据库</b>：只损失性能，不损失正确性</td></tr>
+      <tr><td>状态漂移</td><td>删桶全量重建</td><td>30 秒对账纠偏，只拉回计数器、不打断在途请求</td></tr>
+    </table>
+    <div class="note"><b>能挡的量一样（都在 Redis 之前拒绝），但正确性不再押在 Redis 上</b>——这是本项目相对 12306 学习版实现的加分项，也是面试最值得讲的一句。</div>
+    <div class="note ok">
+      <b>阶段 19 增补（快路径合并）</b>：选课入口把"② 幂等"和"③ 预扣"<b>合并成一个 Lua 脚本</b>
+      （判定与扣减一次原子完成，吸收黑马点评"一步原子"思路）——成功路径的 Redis 往返
+      <b>从 4 次压到 2 次</b>（实测 1.85×）。冷启动第一波走"慢路径"（先初始化再判定），
+      Redis 故障仍走降级直通——三层语义完全一致（40052 满员 / 40060 重复 / 恰好扣 1 个名额）。
+      详见 [docs/13 §3.5](13-读模型与快路径升级（阶段 19）.md)。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5. 对账自愈 ================= -->
+<section id="heal">
+  <div class="sec-head"><div class="sec-no">5</div><h2>对账自愈：让 Redis 永远追着真相跑</h2></div>
+  <p class="sec-sub">🧭 小林路线 · Redis 篇 → 过期与状态管理。Redis 会"记错账"，解决方式不是不信任它，而是定期对账。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1060 330" role="img" aria-label="对账自愈流程图">
+      <rect class="bx-blue" x="40" y="60" width="170" height="66" rx="12"/>
+      <text class="t" x="125" y="88" text-anchor="middle">⏰ 每 30 秒自动跑</text>
+      <text class="s" x="125" y="108" text-anchor="middle">服务启动时也跑一轮</text>
+      <line class="ln" x1="210" y1="93" x2="246" y2="93"/>
+
+      <rect class="bx-violet" x="250" y="60" width="180" height="66" rx="12"/>
+      <text class="t" x="340" y="88" text-anchor="middle" style="fill:#6d28d9">先抢对账锁</text>
+      <text class="s" x="340" y="108" text-anchor="middle">多实例只跑一个</text>
+      <line class="ln" x1="430" y1="93" x2="466" y2="93"/>
+
+      <rect class="bx-gray" x="470" y="60" width="190" height="66" rx="12"/>
+      <text class="t" x="565" y="88" text-anchor="middle">遍历活跃计数器</text>
+      <text class="s" x="565" y="108" text-anchor="middle">Redis 预计数 vs DB 真值</text>
+      <line class="ln" x1="660" y1="93" x2="676" y2="93"/>
+
+      <polygon class="dia" points="680,93 790,41 900,93 790,145"/>
+      <text class="t" x="790" y="88" text-anchor="middle">偏差超阈值？</text>
+      <text class="s" x="790" y="107" text-anchor="middle">≥ max(5, 真值×20%)</text>
+
+      <line class="ln-g" x1="900" y1="93" x2="920" y2="93"/>
+      <text class="lb-g" x="908" y="82" text-anchor="middle">否</text>
+      <rect class="bx-green" x="924" y="64" width="118" height="58" rx="12"/>
+      <text class="t" x="983" y="91" text-anchor="middle" style="fill:#047857">本轮跳过</text>
+      <text class="s" x="983" y="110" text-anchor="middle">下轮再看</text>
+
+      <line class="ln-r" x1="790" y1="145" x2="790" y2="176"/>
+      <text class="lb-r" x="802" y="166">是</text>
+      <rect class="bx-red" x="660" y="180" width="260" height="66" rx="12"/>
+      <text class="t-r" x="790" y="208" text-anchor="middle">纠偏：计数器拉回真值</text>
+      <text class="s" x="790" y="228" text-anchor="middle">只纠预计数，不打断在途请求</text>
+
+      <rect x="40" y="258" width="980" height="60" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.4"/>
+      <text x="530" y="282" text-anchor="middle" style="font-size:12.8px;fill:#1e40af;font-weight:700">🩹 真实案例（并发测试挖出来的缺陷）：手工清库后 Redis 计数器残留 0 → 对账不认领 → 151 个请求全被误拦</text>
+      <text class="s" x="530" y="302" text-anchor="middle">修复：计数器元信息随写 Redis（campus:prededuct:meta）+ 启动即对账 —— 受控实验：0 → 自动纠回真值 10（docs/09 §5 第 5 条）</text>
+    </svg>
+    <div class="cap">图 4 · 对账自愈：Redis 负责挡量、MySQL 负责真相，中间的漂移由 30 秒对账 + 启动对账兜住。</div>
+  </div>
+</section>
+
+<!-- ================= 6. 并发控制 ================= -->
+<section id="control">
+  <div class="sec-head"><div class="sec-no">6</div><h2>并发控制三件套：锁 · 幂等 · 线程池</h2></div>
+  <p class="sec-sub">🧭 小林路线 · Redis 篇 → 分布式锁（SET NX + 为什么释放锁要 Lua）。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 412" role="img" aria-label="接口幂等两态流程图">
+      <rect class="bx-gray" x="60" y="20" width="300" height="54" rx="12"/>
+      <text class="t" x="210" y="52" text-anchor="middle">同一用户 5 秒内又提交了一次</text>
+      <line class="ln" x1="210" y1="74" x2="210" y2="102"/>
+
+      <polygon class="dia" points="80,158 210,106 340,158 210,210"/>
+      <text class="t" x="210" y="152" text-anchor="middle">① SET NX 抢「处理中」标记？</text>
+      <text class="s" x="210" y="170" text-anchor="middle">campus:idem:…:业务键</text>
+
+      <line class="ln-r" x1="340" y1="158" x2="612" y2="158"/>
+      <text class="lb-r" x="478" y="148" text-anchor="middle">抢不到 = 已有人在处理</text>
+      <rect class="bx-red" x="620" y="110" width="340" height="96" rx="12"/>
+      <text class="t-r" x="790" y="138" text-anchor="middle">读标记状态，两种都拒（40060）</text>
+      <text class="s" x="790" y="160" text-anchor="middle">· CONSUMING：前一个还在跑 → 稍后再试</text>
+      <text class="s" x="790" y="182" text-anchor="middle">· CONSUMED：请求已受理 → 去看结果</text>
+
+      <line class="ln" x1="210" y1="210" x2="210" y2="238"/>
+      <text class="s" x="222" y="230">抢到（第一次）</text>
+      <rect class="bx-green" x="60" y="242" width="300" height="54" rx="12"/>
+      <text class="t" x="210" y="274" text-anchor="middle" style="fill:#047857">② 执行业务（选课 / 预约）</text>
+
+      <line class="ln-g" x1="360" y1="269" x2="612" y2="269"/>
+      <rect class="bx-green" x="620" y="242" width="340" height="96" rx="12"/>
+      <text class="s" x="790" y="268" text-anchor="middle" style="font-weight:700;fill:#047857">成功 → 置 CONSUMED</text>
+      <text class="s" x="790" y="290" text-anchor="middle">5 秒内所有重试都拿 40060</text>
+      <text class="s" x="790" y="316" text-anchor="middle">失败 → 删标记，允许下次重试</text>
+
+      <rect x="60" y="356" width="900" height="44" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.4"/>
+      <text x="510" y="383" text-anchor="middle" style="font-size:12.8px;fill:#1e40af;font-weight:700">实测：同一用户并发提交 100 次 → 1 成功 · 99 × 40060 · 总耗时 48ms（幂等 Lua 一次往返）</text>
+    </svg>
+    <div class="cap">图 5 · 幂等两态：抢到标记的人才执行业务；"处理中"和"已完成"对重复请求都回 40060，业务失败则删标记允许重试。</div>
+  </div>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    <b>分布式锁</b> = 厕所门上的"有人"牌子：谁挂的谁摘（释放时校验 token，防误摘别人的）；
+    <b>幂等</b> = 快递运单号：同一个单号，仓库只会发一次货；
+    <b>线程池</b> = 银行窗口就这么几个：人满了就明确拒绝取号（并计数报警），而不是让队伍无限排下去直到 OOM。
+  </div>
+
+  <div class="card">
+    <h3>三件套的本项目实现</h3>
+    <table>
+      <tr><th style="width:16%">组件</th><th style="width:42%">实现</th><th>实测 / 备注</th></tr>
+      <tr>
+        <td><b>分布式锁</b></td>
+        <td><code>CampusLock</code> / <code>RedisCampusLock</code>：<code>SET key token NX PX ttl</code> + Lua 校验后删除；抢不到退避抖动自旋（10~30ms）；Redis 异常降级放行</td>
+        <td>100 线程抢锁 → <b>进入临界区 1 次 / 互斥性违例 0</b>（违例检测内建）</td>
+      </tr>
+      <tr>
+        <td><b>接口幂等</b></td>
+        <td><code>@CampusIdempotent</code> + AOP：两态 Lua（CONSUMING / CONSUMED），SpEL 业务键（如 <code>#req.classId</code>）</td>
+        <td>100 并发 → 1 成功 / 99 × 40060（图 5）</td>
+      </tr>
+      <tr>
+        <td><b>线程池</b></td>
+        <td><code>ThreadPoolBuilder</code> + <code>CampusThreadPools</code> 注册表：QueueType 显式三选一（BOUNDED / UNBOUNDED / SYNCHRONOUS）+ 拒绝计数 + 水位观测</td>
+        <td>修过一个真缺陷：<code>directHandoff()</code> 实际建的是无界队列（"静默排队到 OOM"）→ 显式 QueueType（docs/09 §5）</td>
+      </tr>
+    </table>
+
+    <div class="compare" style="margin-top:14px">
+      <div class="k-card">
+        <span class="tag">小林怎么说</span>
+        <h4>为什么释放锁要用 Lua？</h4>
+        <p>"先 GET 判断是不是自己的锁、再 DEL"——这两步<b>不是原子的</b>，可能在判断后被别人抢走，删掉<b>别人的锁</b>。所以要用 Lua 把"校验 + 删除"写成一步。</p>
+      </div>
+      <div class="arrow">➜</div>
+      <div class="p-card">
+        <span class="tag">本项目怎么做</span>
+        <h4>SET NX PX + Lua 校验删除</h4>
+        <p>官方推荐写法，语义透明、可压测。<b>诚实说明：未引入 Redisson</b>——临界区极短（缓存回源/定时结算/计数器初始化），不需要可重入与看门狗；<code>CampusLock</code> 是接口，想换 Redisson 只改一个实现类。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7. MQ ================= -->
+<section id="mq">
+  <div class="sec-head"><div class="sec-no">7</div><h2>MQ：削峰 · 延时 · 幂等消费</h2></div>
+  <p class="sec-sub">🧭 小林路线 · 《消息队列面试题》：削峰填谷、重复消费、延时消息、消息丢失。</p>
+
+  <div class="fig">
+    <svg viewBox="0 0 1020 320" role="img" aria-label="MQ 削峰延时与幂等消费流程图">
+      <rect class="bx-green" x="50" y="26" width="230" height="62" rx="12"/>
+      <text class="t" x="165" y="50" text-anchor="middle" style="fill:#047857">① 预约创建成功</text>
+      <text class="s" x="165" y="70" text-anchor="middle">用户立刻拿到结果（同步）</text>
+      <line class="ln" x1="280" y1="57" x2="336" y2="57"/>
+
+      <rect class="bx-violet" x="340" y="26" width="230" height="62" rx="12"/>
+      <text class="t" x="455" y="50" text-anchor="middle" style="fill:#6d28d9">② 发延时消息（8 秒）</text>
+      <text class="s" x="455" y="70" text-anchor="middle">「到点检查是否爽约」</text>
+      <line class="ln" x1="570" y1="57" x2="626" y2="57"/>
+
+      <rect class="bx-dark" x="630" y="26" width="230" height="62" rx="12"/>
+      <text class="t-w" x="745" y="50" text-anchor="middle">③ RocketMQ</text>
+      <text class="s-w" x="745" y="70" text-anchor="middle">削峰：先收单，不堵门口</text>
+      <line class="ln" x1="745" y1="88" x2="745" y2="144"/>
+
+      <rect class="bx-blue" x="630" y="148" width="230" height="62" rx="12"/>
+      <text class="t" x="745" y="172" text-anchor="middle">④ 延时到期投递</text>
+      <text class="s" x="745" y="192" text-anchor="middle">消息中间件准时"叫醒"</text>
+      <line class="ln" x1="626" y1="179" x2="574" y2="179"/>
+
+      <rect class="bx-blue" x="340" y="148" width="230" height="62" rx="12"/>
+      <text class="t" x="455" y="172" text-anchor="middle">⑤ 消费者：幂等查重</text>
+      <text class="s" x="455" y="192" text-anchor="middle">重复投递只处理一次</text>
+      <line class="ln" x1="336" y1="179" x2="284" y2="179"/>
+
+      <rect class="bx-green" x="50" y="148" width="230" height="62" rx="12"/>
+      <text class="t" x="165" y="172" text-anchor="middle" style="fill:#047857">⑥ 判爽约 → 释放名额</text>
+      <text class="s" x="165" y="192" text-anchor="middle">8.0s 投递 → 8.6s 判定 NO_SHOW</text>
+
+      <rect x="50" y="244" width="920" height="62" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4" stroke-dasharray="6 4"/>
+      <text class="t" x="510" y="268" text-anchor="middle" style="fill:#b45309">兜底防线：Scheduler 定时扫描（消息万一丢了也不丢单）</text>
+      <text class="s" x="510" y="288" text-anchor="middle">每轮抢分布式锁 SETTLE_LOCK（55s）——多实例只跑一个</text>
+      <line class="ln" x1="165" y1="244" x2="165" y2="214"/>
+    </svg>
+    <div class="cap">图 6 · MQ 一条线：同步先回结果 → 延时消息到点判爽约 → 消费端幂等 → Scheduler 兜底防消息丢失。</div>
+  </div>
+
+  <div class="say">
+    <span class="st">💬 说人话</span>
+    <b>削峰</b> = 奶茶店取号：高峰期先收单给号，不让所有人挤在柜台前；
+    <b>幂等消费</b> = 同一张订单即使被派送两次，仓库也只发一次货（发 2 条 → 落 1 条）；
+    <b>延时消息</b> = 定个 8 秒的闹钟，到点自动检查"这人来没来"，没来就判爽约、释放名额。
+  </div>
+
+  <div class="note warn"><b>诚实缺口（写进 docs/09 §6）：</b>MQ 死信队列与积压告警预案<b>未做</b>——目前的兜底是"消费端幂等 + Scheduler 定期扫描"，生产化路径已在文档中列出。</div>
+</section>
+
+<!-- ================= 8. 真相层 ================= -->
+<section id="truth">
+  <div class="sec-head"><div class="sec-no">8</div><h2>真相层：数据库四道防线（唯一不可绕过）</h2></div>
+  <p class="sec-sub">前面的关卡全部失效（Redis 挂了、闸门降级直通），这四道防线仍然保证"恰好"。</p>
+
+  <div class="card">
+    <table>
+      <tr><th style="width:16%">防线</th><th style="width:46%">机制</th><th>说人话</th></tr>
+      <tr>
+        <td><b>条件更新</b></td>
+        <td><code>UPDATE t_course_class SET selected = selected + 1 WHERE id = ? AND selected &lt; capacity</code></td>
+        <td>"还有余位才允许 +1"写进 SQL 本身——超卖在数据库层<b>不可能</b>发生</td>
+      </tr>
+      <tr>
+        <td><b>唯一索引</b></td>
+        <td><code>uk_reserved</code> / <code>uk_user_class_semester</code></td>
+        <td>身份证号唯一：重复记录在磁盘层直接被拒绝，连"先查再插"的竞态都省了</td>
+      </tr>
+      <tr>
+        <td><b>行锁</b></td>
+        <td><code>SELECT … FOR UPDATE</code>（用户行）</td>
+        <td>单人间排队：一个用户的事务查完，下一个再查</td>
+      </tr>
+      <tr>
+        <td><b>位图</b></td>
+        <td>座位位图冲突检测</td>
+        <td>一张格子纸，占了就打勾——冲突一眼可见</td>
+      </tr>
+    </table>
+    <div class="note ok"><b>实测背书：</b>端到端 151 个真实用户（真实登录 + 走网关）并发抢 10 个名额 → <b>恰好 10 人成功、0 系统异常</b>（默认限流下：131 × 40055 + 10 × 40052 + 10 成功）。</div>
+  </div>
+</section>
+
+<!-- ================= 9. 实测与复现 ================= -->
+<section id="evidence">
+  <div class="sec-head"><div class="sec-no">9</div><h2>实测数据汇总与复现路线</h2></div>
+  <p class="sec-sub">所有数字都可在本机复跑；口径：同机压测（压测端与被测端共享 16 核），详见 docs/10 的十个口径陷阱。</p>
+
+  <div class="card">
+    <table>
+      <tr><th style="width:22%">能力</th><th style="width:30%">场景</th><th style="width:30%">数字</th><th>证据</th></tr>
+      <tr><td><b>读缓存对照</b></td><td>工作台概览（6 次聚合 count），30 轮</td><td>25.63ms → <b>1.00ms</b>（<span class="ok">25.6×</span>）</td><td>docs/09 §4.1</td></tr>
+      <tr><td><b>缓存反例</b></td><td>单资源时段查询</td><td>1.10ms → 2.30ms（<b>刻意的反例</b>，见 §3 黄框）</td><td>docs/09 §3.3</td></tr>
+      <tr><td><b>预扣闸门</b></td><td>1000 并发抢 10 个名额</td><td>Redis 拦截 <b>990</b> / 放行 <b>10</b> / 回补 0 / 281~550ms</td><td>docs/09 §4.2</td></tr>
+      <tr><td><b>接口幂等</b></td><td>同一用户并发提交 100 次</td><td>1 成功 / <b>99 × 40060</b> / 48ms</td><td>docs/09 §4.3</td></tr>
+      <tr><td><b>分布式锁</b></td><td>100 线程同抢一把锁</td><td>进入 1 次 / <b>违例 0</b> / 10~38ms</td><td>docs/09 §4.3</td></tr>
+      <tr><td><b>端到端写竞争</b></td><td>151 个真实用户走网关抢 10 个名额</td><td><b>恰好 10 成功 · 0 系统异常</b>（default 限流下 131×40055）</td><td>docs/10 §2.2</td></tr>
+      <tr><td><b>读容量</b></td><td>走网关，3 个只读目标 × 并发梯度</td><td>~<b>3.5k~4.1k QPS</b> 饱和（P50 43~51ms，同机口径）</td><td>docs/10 §2.1</td></tr>
+      <tr><td><b>全链路回归</b></td><td>登录 / 资源 / 预约 / 选课 / MQ / 全部观测接口</td><td>46+ 项断言全绿 · 服务日志 <b>0 ERROR</b></td><td>docs/09 §4.5</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>自己动手复现（三条路线）</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px">
+        <b>① 看现场（前端）</b><br>
+        <span style="color:var(--sub)">登录 → 菜单「🛠 工程演示 ▾」→<br>
+        🚀 缓存（命中率/布隆探针/对照实验）<br>
+        🔥 预扣闸门（挡量链路 + Redis vs DB 现场）<br>
+        🔒 并发控制（锁竞争/幂等演示/线程池水位）<br>
+        ⚡ 并发压测（8 场景一键跑）</span>
+      </div>
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px">
+        <b>② 跑数字（命令行）</b><br>
+        <span style="color:var(--sub)">
+        <code class="inl">python tools/loadtest.py read --concurrency 50,100,200</code>（容量）<br>
+        <code class="inl">python tools/loadtest.py verify --users 150</code>（端到端正确性）<br>
+        详见 docs/10</span>
+      </div>
+      <div style="background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px">
+        <b>③ 看代码</b><br>
+        <span style="color:var(--sub);font-family:Consolas,monospace;font-size:12px">
+        campus-common/…/framework/cache<br>
+        campus-common/…/framework/lock<br>
+        campus-common/…/framework/concurrent<br>
+        campus-common/…/framework/idempotent<br>
+        campus-service/…/prededuct</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 10. 面试话术 ================= -->
+<section id="script">
+  <div class="sec-head"><div class="sec-no">10</div><h2>60 秒面试话术（说人话版）</h2></div>
+  <p class="sec-sub">把上面的六道关，压成一段能一口气讲完的话。</p>
+
+  <div class="script">
+    <h3>🎤 "你这个项目的高并发是怎么做的？"</h3>
+    <p>
+      我把它设计成一条<b>漏斗</b>：请求先过网关鉴权和限流，再走接口幂等，然后到缓存和预扣闸门这层——
+      这是最核心的一层。<b>读路径</b>用布隆过滤器防穿透、互斥回源防击穿、写后失效保一致，
+      实测工作台概览从 25.6 毫秒降到 1 毫秒；<b>写路径</b>用 Redis Lua 原子预扣名额，
+      1000 人并发抢 10 个名额，<b>990 个在内存层就被挡回</b>，只有 10 个进数据库，
+      而且被挡的请求根本不占用数据库连接——因为闸门放在事务之外。
+      最后一道是数据库：条件更新加唯一索引，保证"恰好"，这也是唯一不可绕过的真相层。
+    </p>
+    <p>
+      有个我觉得最值得讲的取舍：<b>Redis 在我这里只是"预计数"，MySQL 才是真相</b>——
+      Redis 挂了就自动降级直通数据库，只损失性能、不丢正确性；计数器漂移了，30 秒对账自己纠回来。
+      这套设计是跟着小林 coding 的路线走的：缓存三兄弟、分布式锁、MQ 幂等，一个个知识点在项目里都有落点、有实测数字。
+      <span class="warn2">前面还有锁、幂等、线程池三件套兜住并发控制，MQ 做削峰和延时判爽约。</span>
+    </p>
+  </div>
+
+  <div class="note">
+    <b>进一步追问的方向</b>（都有文档支撑）：为什么缓存有时反而更慢（§3 反例）？为什么闸门不能放在事务里（§4）？
+    为什么释放锁要用 Lua（§6）？Redis 当唯一真相 vs 当预计数的取舍（§4 对照 12306）？
+    想继续往 10 万 / 100 万 QPS 走，要动的是多实例 + 负载均衡 + Redis 集群 + 读写分离——那是换架构维度，不是调参。
+  </div>
+</section>
+
+<footer>
+  <div>📄 校园综合服务平台 · 高并发处理全流程图解（生成于 2026-10-10，阶段 18 完成后）</div>
+  <div style="margin-top:6px">相关文档：
+    <a href="09-高并发改造设计与验收.md">docs/09 改造设计与验收</a> ·
+    <a href="10-并发能力测试指南.md">docs/10 测试指南</a> ·
+    <a href="08-高并发与分布式图解.html">docs/08 阶段 0~15 图解</a> ·
+    <a href="../README.md">README</a>
+  </div>
+  <div class="file-links">
+    <span>图 1 六道关漏斗</span><span>图 2 读路径四步</span><span>图 3 写路径·预扣闸门</span>
+    <span>图 4 对账自愈</span><span>图 5 幂等两态</span><span>图 6 MQ 削峰·延时·幂等</span>
+  </div>
+</footer>
+
+</main>
+</body>
+</html>

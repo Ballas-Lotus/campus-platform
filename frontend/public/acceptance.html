@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>校园综合服务平台 · 阶段 0~3 验收演示</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --border: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --green: #34d399; --red: #f87171;
+    --blue: #60a5fa; --amber: #fbbf24; --purple: #a78bfa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.6 "Microsoft YaHei", system-ui, sans-serif; padding: 28px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h1 .v { color: var(--blue); }
+  .sub { color: var(--muted); margin-bottom: 22px; }
+  .grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; max-width: 1280px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; color: var(--blue); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card h2::before { content: ""; width: 4px; height: 16px; background: var(--blue); border-radius: 2px; }
+
+  /* 阶段进度 */
+  .stages { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stage { flex: 1; min-width: 92px; border-radius: 8px; padding: 10px 12px; border: 1px solid var(--border); position: relative; }
+  .stage.done { border-color: var(--green); background: rgba(52, 211, 153, .08); }
+  .stage .no { font-size: 11px; color: var(--muted); }
+  .stage.done .no { color: var(--green); }
+  .stage .name { font-size: 13px; margin-top: 2px; }
+  .stage .tag { font-size: 11px; margin-top: 6px; color: var(--green); }
+  .stage.plan .tag { color: var(--muted); }
+
+  /* 按钮 */
+  .btn { background: var(--blue); color: #0b1220; border: 0; border-radius: 8px; padding: 9px 14px;
+         font: 600 13px/1 "Microsoft YaHei", sans-serif; cursor: pointer; margin: 0 8px 8px 0; transition: .15s; }
+  .btn:hover { filter: brightness(1.15); }
+  .btn.green { background: var(--green); }
+  .btn.red { background: var(--red); color: #fff; }
+  .btn.gray { background: #475569; color: var(--text); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* 终端 */
+  #term { background: #020617; border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+          font: 12px/1.7 Consolas, "Courier New", monospace; height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  #term .req { color: var(--amber); }
+  #term .ok { color: var(--green); }
+  #term .err { color: var(--red); }
+  #term .dim { color: var(--muted); }
+  #term .sep { color: var(--border); }
+
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-family: Consolas, monospace; color: var(--green); }
+  .hi { color: var(--amber); font-weight: 600; }
+  .chip { display: inline-block; background: rgba(96,165,250,.15); color: var(--blue); border-radius: 6px;
+          padding: 2px 8px; font-size: 12px; margin: 2px 4px 2px 0; }
+  .stat { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+  .stat div { background: rgba(96,165,250,.08); border: 1px solid var(--border); border-radius: 8px;
+              padding: 10px 16px; text-align: center; flex: 1; min-width: 110px; }
+  .stat .n { font-size: 20px; font-weight: 700; color: var(--blue); font-family: Consolas, monospace; }
+  .stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<h1>校园综合服务平台 <span class="v">· 验收演示</span></h1>
+<div class="sub">阶段 0~3 已完成 · 本页所有绿色/红色结果均为<b>浏览器对真实后端的实时调用</b>（Vite 代理 → Spring Boot :8081 → MySQL :3308 / Redis :6380）</div>
+
+<div class="grid">
+  <!-- 左列 -->
+  <div>
+    <div class="card">
+      <h2>阶段进度</h2>
+      <div class="stages">
+        <div class="stage done"><div class="no">阶段 0</div><div class="name">环境与骨架</div><div class="tag">✓ 已验收</div></div>
+        <div class="stage done"><div class="no">阶段 1</div><div class="name">数据库建表</div><div class="tag">✓ 已验收</div></div>
+        <div class="stage done"><div class="no">阶段 2</div><div class="name">数据生成</div><div class="tag">✓ 已验收</div></div>
+        <div class="stage done"><div class="no">阶段 3</div><div class="name">登录与鉴权</div><div class="tag">✓ 已验收</div></div>
+        <div class="stage plan"><div class="no">阶段 4~11</div><div class="name">四大业务功能</div><div class="tag">进行中</div></div>
+        <div class="stage plan"><div class="no">阶段 12~15</div><div class="name">架构演进</div><div class="tag">规划中</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>实时联调（点击即真实调用后端）</h2>
+      <div>
+        <button class="btn gray" onclick="health()">健康检查 GET /api/health</button>
+      </div>
+      <div style="margin-top:6px">
+        <button class="btn green" onclick="login('2021001','123456','学号')">登录① 学号 2021001（林晚秋）</button>
+        <button class="btn green" onclick="login('13912345678','123456','手机号')">登录② 手机号 13912345678（陈屿）</button>
+        <button class="btn green" onclick="login('admin@campus.edu.cn','123456','邮箱')">登录③ 邮箱 admin@campus.edu.cn（王教务）</button>
+      </div>
+      <div>
+        <button class="btn" onclick="me()">查询当前用户 GET /api/auth/me</button>
+        <button class="btn red" onclick="meNoToken()">未登录访问（预期 40100）</button>
+        <button class="btn" onclick="logout()">登出 POST /api/auth/logout</button>
+        <button class="btn red" onclick="meAfterLogout()">登出后旧 token 访问（预期 40101）</button>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:12px;color:var(--muted)">当前登录态：<span id="who">未登录</span></div>
+        <div id="term" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>数据资产（已入库的真实数据）</h2>
+      <div class="stat">
+        <div><div class="n">216.7万</div><div class="l">13 表总行数</div></div>
+        <div><div class="n">95.7万</div><div class="l">预约流水（90 天）</div></div>
+        <div><div class="n">59.8万</div><div class="l">时间片库存</div></div>
+        <div><div class="n">1.0万</div><div class="l">用户账号</div></div>
+      </div>
+      <table>
+        <tr><th>核心表</th><th style="text-align:right">行数</th><th>说明</th></tr>
+        <tr><td>t_reservation</td><td class="num">956,828</td><td>预约流水：完成 74.5% / 取消 15.8% / 爽约 9.7%</td></tr>
+        <tr><td>t_resource_slot</td><td class="num">597,920</td><td>未来 14 天滚动窗口（588,000+3,920+6,000）</td></tr>
+        <tr><td>t_user_time_occupancy</td><td class="num">554,795</td><td>96 格位图（冲突检测核心）</td></tr>
+        <tr><td>t_user</td><td class="num">10,003</td><td>10,000 学生 + 3 演示账号（密码均 123456）</td></tr>
+        <tr><td>t_resource</td><td class="num">9,320</td><td>座位 3,000 + 场馆 20 + 讲座席位 6,000 + 课额 300</td></tr>
+        <tr><td>t_course / t_course_class</td><td class="num">200 / 300</td><td>8 学院 × 25 门；选课 7,017（无候补——阶段 8 规则）</td></tr>
+      </table>
+      <div style="margin-top:10px">
+        <span class="chip">校验：时间冲突 = 0</span>
+        <span class="chip">库存自洽 = 0</span>
+        <span class="chip">教学班计数一致</span>
+        <span class="chip">双高峰曲线</span>
+        <span class="chip">热点 ×5 加权</span>
+        <span class="chip">爽约惯犯 5%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右列 -->
+  <div>
+    <div class="card">
+      <h2>已完成功能清单</h2>
+      <table>
+        <tr><th>阶段</th><th>交付内容</th><th>验证方式</th></tr>
+        <tr><td>0</td><td>Docker 中间件（MySQL 3308 / Redis 6380）+ 前后端骨架 /api/health</td><td>工作台首页显示 UP</td></tr>
+        <tr><td>1</td><td>13 张表 + 24 索引（含 active_key 生成列防重）</td><td>SHOW TABLES / 索引清单</td></tr>
+        <tr><td>2</td><td>Python 生成器（seed=42）+ LOAD DATA 导入 + 双层校验</td><td>16/16 + 8/8 全 PASS</td></tr>
+        <tr><td>3</td><td>三种登录 + BCrypt + JWT + Redis 登录态副本 + 拦截器</td><td>← 左侧按钮实时演示</td></tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>登录态架构（照搬 12306，含改进）</h2>
+      <div style="font-family:Consolas,monospace;font-size:12.5px;line-height:2;color:var(--muted)">
+        请求 ──► <span style="color:var(--amber)">UserTransmitFilter</span> ── 解析 JWT ──► <span style="color:var(--blue)">UserContext</span>（TTL）<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──► <span style="color:var(--amber)">LoginInterceptor</span> ── 两级校验 ──┐<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├ JWT 签名/有效期 → 40100<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ <span style="color:var(--green)">Redis 副本存在？</span> → 40101（可主动踢人）<br>
+        <br>
+        登录：BCrypt 校验 → JWT(HS512, 24h) + Redis 副本(<span style="color:var(--green)">30min 滑动续期</span>)
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-top:8px">
+        改进点（12306 原版没有的）：① 滑动续期 ② jjwt 0.12 新 API（免 jaxb 补丁）③ 密钥配置化
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>数据真实性亮点</h2>
+      <table>
+        <tr><td>时段分布</td><td>8-11 点早峰 → 12-13 点午谷 → 15/19 点双峰</td></tr>
+        <tr><td>月份规律</td><td>暑假 ×0.5 → 9 月开学 1.44 万/天 → 国庆 ×0.45</td></tr>
+        <tr><td>热点资源</td><td>A馆3层A区(靠窗) ×5、羽毛球场1号 ×4、AI 讲座 95% 满</td></tr>
+        <tr><td>用户画像</td><td>四种人格（早起/夜猫/午间/均衡）+ 5% 爽约惯犯贡献 40% 爽约</td></tr>
+        <tr><td>取消-再约</td><td>7,752 条同片"CANCELLED+有效"记录（演示 active_key 生成列）</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const term = document.getElementById('term');
+let token = null;   // 当前登录态（含 Bearer 前缀）
+
+function print(html, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.innerHTML = html;
+  term.appendChild(line);
+  term.scrollTop = term.scrollHeight;
+}
+function sep() { print('─'.repeat(72), 'sep'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function fmt(data) { return esc(JSON.stringify(data, null, 2)); }
+
+async function call(method, url, body, useToken) {
+  const opt = { method, headers: {} };
+  if (body) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  if (useToken && token) opt.headers['Authorization'] = token;
+  print(`➜ ${method} ${url}${useToken && token ? '   [携带 Bearer token]' : ''}`, 'req');
+  try {
+    const res = await fetch(url, opt);
+    const data = await res.json();
+    print((data.code === 0 ? '✔ ' : '✘ ') + `HTTP ${res.status}`, data.code === 0 ? 'ok' : 'err');
+    print(fmt(data), data.code === 0 ? 'ok' : 'err');
+    return data;
+  } catch (e) {
+    print('✘ 请求失败: ' + esc(e.message), 'err');
+    return null;
+  }
+}
+
+async function health() {
+  sep(); print('【健康检查】', 'dim');
+  await call('GET', '/api/health');
+}
+
+async function login(account, password, label) {
+  sep(); print(`【登录 —— ${label}】`, 'dim');
+  const data = await call('POST', '/api/auth/login', { account, password });
+  if (data && data.code === 0) {
+    token = data.data.accessToken;
+    document.getElementById('who').innerHTML =
+      `<span style="color:var(--green)">${esc(data.data.realName)}（${esc(data.data.studentNo)} / ${esc(data.data.role)}）</span>`;
+  }
+}
+
+async function me() {
+  sep(); print('【当前用户 /api/auth/me】', 'dim');
+  if (!token) { print('提示：尚未登录，先点上方任意登录按钮——现在直接访问会返回 40100', 'dim'); }
+  await call('GET', '/api/auth/me', null, true);
+}
+
+async function meNoToken() {
+  sep(); print('【未登录访问（不携带 token）】', 'dim');
+  await call('GET', '/api/auth/me');
+}
+
+async function logout() {
+  sep(); print('【登出：删除 Redis 登录态副本】', 'dim');
+  const data = await call('POST', '/api/auth/logout', null, true);
+  if (data && data.code === 0) {
+    document.getElementById('who').innerHTML = '<span style="color:var(--amber)">已登出（Redis 副本已删，token 变量保留以便演示失效）</span>';
+  }
+}
+
+async function meAfterLogout() {
+  sep(); print('【登出后再用旧 token（预期 40101 —— 服务端主动失效）】', 'dim');
+  await call('GET', '/api/auth/me', null, true);
+}
+
+// 打开页面自动跑一次健康检查
+health();
+</script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+server:
+  port: 9081
+
+spring:
+  application:
+    name: campus-user
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  # 阶段 14：数据源切换为 ShardingSphere-JDBC（与 campus-service 同一份分片配置——
+  # 两服务共享逻辑表视图形，登录/索引表/预约统计/站内信等查询按分片键路由）
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:shardingsphere-config.yaml
+    hikari:
+      # 阶段 14：分片后每条事务会占用 1 个外层连接（ShardingSphere 连接内部再分发到 ds_0/ds_1）
+      # 压测 100+ 并发时 20 会直接打爆 → 按最大压测并发放大
+      maximum-pool-size: 128
+      minimum-idle: 5
+      connection-timeout: 5000
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6380
+      password: campus123456
+      timeout: 3s
+      lettuce:
+        shutdown-timeout: 100ms
+  cloud:
+    nacos:
+      discovery:
+        # 阶段 12：本机 Nacos（与 12306 项目共用，服务名前缀 campus-* 隔离）
+        server-addr: 127.0.0.1:8848
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+
+# ------------------------------------------------------------------
+# 校园平台自定义配置（user 侧：JWT 签发 + 登录态副本/续期）
+# ------------------------------------------------------------------
+campus:
+  jwt:
+    # 密钥（HS512 要求 >= 64 字节；生产应放环境变量/配置中心）——须与网关/全家一致
+    secret: UEEc7i41Rq75WYgIiBk7C1HHIpA6kO5SjCF7v3sBl6gQftttH6qJeWU877jYgh-6IYG9vn9K9wGbaGgn7IaHJA
+    issuer: campus-platform
+    # JWT 本体有效期（秒）：照搬 12306（1 天）——真正的登录态由 Redis 副本控制
+    expire-seconds: 86400
+    # Redis 登录态副本 TTL（秒）：2 小时（副本不存在 = 登录态被服务端失效）
+    session-ttl-seconds: 7200
+    # 滑动续期：剩余 TTL 低于该值（秒）时续满 session-ttl-seconds
+    renew-threshold-seconds: 1800
+
+logging:
+  level:
+    com.campus: info
+    # ShardingSphere 的 SQL 日志（sql-show: true）——分片路由的现场证据
+    ShardingSphere-SQL: info

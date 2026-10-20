@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.12</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.campus</groupId>
+    <artifactId>campus-platform</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>campus-platform</name>
+    <description>校园综合服务平台 - 后端（阶段 12：微服务拆分 = 网关 + 双服务 + 共享内核）</description>
+
+    <modules>
+        <module>campus-common</module>
+        <module>campus-user</module>
+        <module>campus-service</module>
+        <module>campus-gateway</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <mybatis-plus.version>3.5.9</mybatis-plus.version>
+        <jjwt.version>0.12.6</jjwt.version>
+        <hutool.version>5.8.32</hutool.version>
+        <ttl.version>2.14.5</ttl.version>
+        <!-- 版本组合已核对：Boot 3.2.x ↔ Spring Cloud 2023.0.3 ↔ SCA 2023.0.1.0（docs/04 §5） -->
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
+        <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
+        <!-- 阶段 13：RocketMQ（2.3.1 = 官方 Spring Boot 3 适配版：
+             新式 AutoConfiguration.imports 注册 + 适配 client 5.x 包路径；2.2.3 在 Boot 3 下
+             既不注册自动配置、其消费者又引 client 5.x 已迁移的 MessageModel 类） -->
+        <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
+        <!-- client 家族与 broker（本机 5.3.4）同代：2.3.1 传递的 5.1.4 缺 setNamespaceV2 等 API；
+             acl 在镜像上最高 5.3.2，故全家统一 5.3.2 -->
+        <rocketmq.version>5.3.2</rocketmq.version>
+        <!-- 阶段 14：ShardingSphere-JDBC（与本机 12306 项目同版本 5.3.2——该版本经 12306 实战验证：
+             多库分片 + CLASS_BASED 自定义算法 + ENCRYPT 列加密 + ShardingSphereDriver 均可用于 Spring Boot 3.x） -->
+        <shardingsphere.version>5.3.2</shardingsphere.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            <!-- 3.5.9 模块化：分页插件等依赖 JSqlParser 的内置插件被拆分至此模块，必须显式引入 -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-jsqlparser</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>transmittable-thread-local</artifactId>
+                <version>${ttl.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.campus</groupId>
+                <artifactId>campus-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-spring-boot-starter</artifactId>
+                <version>${rocketmq-spring.version}</version>
+            </dependency>
+            <!-- 统一 client 家族版本（覆盖 starter 传递的 5.1.4） -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-client</artifactId>
+                <version>${rocketmq.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-common</artifactId>
+                <version>${rocketmq.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-remoting</artifactId>
+                <version>${rocketmq.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-acl</artifactId>
+                <version>${rocketmq.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-srvutil</artifactId>
+                <version>${rocketmq.version}</version>
+            </dependency>
+
+            <!-- 阶段 14：分库分表（jdbc-core = ShardingSphereDriver + 分片/加密引擎；
+                 sharding-api = 自定义分片算法的编译期 SPI 接口） -->
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-jdbc-core</artifactId>
+                <version>${shardingsphere.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-sharding-api</artifactId>
+                <version>${shardingsphere.version}</version>
+            </dependency>
+            <!-- 注意（阶段 14）：ShardingSphere 5.3.2 与 Boot 3.2 自带 snakeyaml 2.x 不兼容
+                 （marshal 路径用了 1.x 的 Representer 无参构造）——官方 5.5.3 才修复。
+                 本项目的解法：保留 5.3.2（与 12306 同版）+ 两个服务模块内置
+                 org.apache.shardingsphere.infra.util.yaml.representer.ShardingSphereYamlRepresenter
+                 补丁类（类覆盖，源码即 5.3.2 官方源码 + 5.5.3 的构造器修法）。
+                 故此处不钉 snakeyaml 版本，沿用 Boot 管理的 2.2。 -->
+        </dependencies>
+    </dependencyManagement>
+</project>

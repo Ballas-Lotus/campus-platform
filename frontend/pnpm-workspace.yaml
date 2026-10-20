@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+# pnpm 10+ 的构建脚本白名单（新版 pnpm 默认禁止依赖执行 postinstall，
+# esbuild / vue-demi 需要构建脚本才能正常工作）
