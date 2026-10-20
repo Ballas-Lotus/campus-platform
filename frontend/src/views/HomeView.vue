@@ -59,14 +59,6 @@
       </div>
     </el-card>
 
-    <el-alert
-      class="note"
-      type="success"
-      :closable="false"
-      show-icon
-      title="阶段 14 已交付：全平台跑在分库分表（2 库 × 4 表 = 8 分片）之上"
-      description="图书馆座位 / 体育场馆 / 讲座报名 / 选课均可在线办理；单号升级为「雪花 + 基因」；手机号/邮箱列加密；登录走读扩散索引表；选课接口带 Sentinel 限流。「🧩 分库分表」页可看分片分布与基因法路由验证。测试账号 test 每次登录自动清空数据。"
-    />
   </div>
 </template>
 
@@ -97,11 +89,7 @@ const entries = [
   { icon: '🏸', name: '体育场馆预约', desc: '羽毛球 / 篮球 / 网球 / 健身 / 游泳', path: '/venue', stage: '', stat: (s) => `${s.venue} 个场馆` },
   { icon: '🎤', name: '讲座预约', desc: '人数限额报名 · 到场自选座位', path: '/lecture', stage: '', stat: (s) => `当前可预约 ${s.lectureBookable} 场讲座，${s.lectureUpcoming} 场讲座将开放预约` },
   { icon: '📖', name: '选课', desc: '200 门课程 · 人数限额先到先得 · 自动查冲突', path: '/course', stage: '' },
-  { icon: '👤', name: '个人中心', desc: '资料统计 · 当日日程（位图反解）· 修改密码', path: '/profile', stage: '', stat: () => '预约与课表合并时间轴' },
-  { icon: '⚡', name: '并发压测', desc: '防超卖 / 防重复 / 位图冲突 / 选课限额', path: '/stress', stage: '', stat: () => '4 个场景 · 服务端并发实测（自动清理）' },
-  { icon: '📨', name: 'MQ 演示', desc: '延时消息 · 幂等消费 · 站内信异步通知', path: '/mq', stage: '', stat: () => 'RocketMQ 三场景现场演示' },
-  { icon: '🧩', name: '分库分表', desc: '8 分片拓扑 · 基因法单号 · AES 列加密 · Sentinel 限流', path: '/sharding', stage: '', stat: () => '分片观测 + 路由验证器' },
-  { icon: '📈', name: '演进对比', desc: '单体 vs 分片现场对照压测 · 逐项收益/代价', path: '/evolution', stage: '', stat: () => '一键双侧对照 + 结论表' }
+  { icon: '👤', name: '个人中心', desc: '资料统计 · 当日日程（位图反解）· 修改密码', path: '/profile', stage: '', stat: () => '预约与课表合并时间轴' }
 ]
 
 function entryStat(entry) {
@@ -250,8 +238,4 @@ onMounted(async () => {
   margin-top: 2px;
 }
 
-.note {
-  margin-top: 22px;
-  border-radius: 10px;
-}
 </style>

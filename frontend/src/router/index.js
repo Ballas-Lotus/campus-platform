@@ -20,15 +20,7 @@ const router = createRouter({
         { path: 'lecture', name: 'lecture', component: () => import('../views/LectureView.vue'), meta: { title: '讲座' } },
         { path: 'course', name: 'course', component: () => import('../views/CourseView.vue'), meta: { title: '选课' } },
         { path: 'reservations', name: 'reservations', component: () => import('../views/MyReservationsView.vue'), meta: { title: '我的预约' } },
-        { path: 'profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: '个人中心' } },
-        { path: 'stress', name: 'stress', component: () => import('../views/StressView.vue'), meta: { title: '并发压测' } },
-        { path: 'mq', name: 'mq', component: () => import('../views/MqView.vue'), meta: { title: 'MQ 演示' } },
-        { path: 'sharding', name: 'sharding', component: () => import('../views/ShardingView.vue'), meta: { title: '分库分表' } },
-        { path: 'evolution', name: 'evolution', component: () => import('../views/EvolutionView.vue'), meta: { title: '演进对比' } },
-        { path: 'cache', name: 'cache', component: () => import('../views/CacheView.vue'), meta: { title: '缓存' } },
-        { path: 'prededuct', name: 'prededuct', component: () => import('../views/PreDeductView.vue'), meta: { title: '预扣闸门' } },
-        { path: 'concurrency', name: 'concurrency', component: () => import('../views/ConcurrencyView.vue'), meta: { title: '并发控制' } },
-        { path: 'observatory', name: 'observatory', component: () => import('../views/ObservatoryView.vue'), meta: { title: '齐射观测台' } }
+        { path: 'profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { title: '个人中心' } }
       ]
     },
     { path: '/:pathMatch(.*)*', redirect: '/' }

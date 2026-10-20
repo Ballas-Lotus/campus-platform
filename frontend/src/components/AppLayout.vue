@@ -8,21 +8,6 @@
                        :class="{ active: isActive(m.path) }">
             {{ m.icon }} {{ m.name }}
           </router-link>
-          <!-- 工程演示页（阶段 9 起逐阶段增加）收进下拉：主菜单只留业务入口，避免横向溢出 -->
-          <el-dropdown trigger="click" @command="goDemo">
-            <span class="nav-item demo-trigger" :class="{ active: isDemoActive }">
-              🛠 工程演示 <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item v-for="d in demoMenus" :key="d.path" :command="d.path">
-                  <span :class="{ 'demo-active': route.path.startsWith(d.path) }">
-                    {{ d.icon }} {{ d.name }}
-                  </span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
         </nav>
       </div>
       <div class="nav-right" v-if="userStore.info">
@@ -79,7 +64,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
@@ -99,24 +84,6 @@ const menus = [
   { path: '/reservations', name: '我的预约', icon: '📋' },
   { path: '/profile', name: '个人中心', icon: '👤' }
 ]
-
-/** 工程演示（阶段 9~18）：架构与并发能力的现场观测页 */
-const demoMenus = [
-  { path: '/stress', name: '并发压测（8 场景）', icon: '⚡' },
-  { path: '/prededuct', name: '预扣闸门（阶段 17）', icon: '🔥' },
-  { path: '/cache', name: '缓存（阶段 16）', icon: '🚀' },
-  { path: '/concurrency', name: '并发控制（阶段 18）', icon: '🔒' },
-  { path: '/observatory', name: '齐射观测台（阶段 19）', icon: '🔭' },
-  { path: '/mq', name: 'MQ 演示', icon: '📨' },
-  { path: '/sharding', name: '分库分表', icon: '🧩' },
-  { path: '/evolution', name: '演进对比', icon: '📈' }
-]
-
-const isDemoActive = computed(() => demoMenus.some((d) => route.path.startsWith(d.path)))
-
-function goDemo(path) {
-  router.push(path)
-}
 
 // ---------------- 站内信（阶段 13） ----------------
 const unread = ref(0)
@@ -258,20 +225,6 @@ onUnmounted(() => {
 
 .nav-item.active {
   background: #eff6ff;
-  color: #2563eb;
-  font-weight: 600;
-}
-
-/* 工程演示下拉触发点 */
-.demo-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  cursor: pointer;
-  outline: none;
-}
-
-.demo-active {
   color: #2563eb;
   font-weight: 600;
 }

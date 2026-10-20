@@ -31,7 +31,7 @@
         </el-button>
       </div>
     </div>
-    <p class="footer">校园综合服务平台 · 阶段 3 交付（登录与鉴权）</p>
+    <p class="footer">校园综合服务平台 · 让选课与预约更简单</p>
   </div>
 </template>
 
