@@ -1,7 +1,7 @@
 <template>
   <div>
     <h2 class="page-title">👤 个人中心</h2>
-    <p class="page-sub">个人资料 · 使用统计 · 当日日程（96 格位图反解）· 修改密码</p>
+    <p class="page-sub">个人资料 · 使用统计 · 当日日程 · 修改密码</p>
 
     <div class="top-grid">
       <!-- 资料卡 -->
@@ -125,9 +125,6 @@
         </el-timeline-item>
       </el-timeline>
 
-      <div class="bitmap-hint" v-if="schedule.bitmap">
-        当日占用位图（96 格 × 15 分钟 → 24 hex）：<code>{{ schedule.bitmap }}</code>
-      </div>
     </el-card>
 
     <!-- 修改密码 -->
@@ -394,17 +391,4 @@ onMounted(() => {
   font-size: 12.5px;
 }
 
-.bitmap-hint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.bitmap-hint code {
-  font-family: Consolas, monospace;
-  color: #475569;
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
 </style>

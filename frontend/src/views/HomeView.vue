@@ -89,7 +89,7 @@ const entries = [
   { icon: '🏸', name: '体育场馆预约', desc: '羽毛球 / 篮球 / 网球 / 健身 / 游泳', path: '/venue', stage: '', stat: (s) => `${s.venue} 个场馆` },
   { icon: '🎤', name: '讲座预约', desc: '人数限额报名 · 到场自选座位', path: '/lecture', stage: '', stat: (s) => `当前可预约 ${s.lectureBookable} 场讲座，${s.lectureUpcoming} 场讲座将开放预约` },
   { icon: '📖', name: '选课', desc: '200 门课程 · 人数限额先到先得 · 自动查冲突', path: '/course', stage: '' },
-  { icon: '👤', name: '个人中心', desc: '资料统计 · 当日日程（位图反解）· 修改密码', path: '/profile', stage: '', stat: () => '预约与课表合并时间轴' }
+  { icon: '👤', name: '个人中心', desc: '资料统计 · 当日日程 · 修改密码', path: '/profile', stage: '', stat: () => '预约与课表合并时间轴' }
 ]
 
 function entryStat(entry) {

@@ -210,11 +210,10 @@
       </div>
     </el-drawer>
 
-    <!-- ==================== 选课任务队列（阶段 21.1 · 回执确认制） ==================== -->
-    <!-- 提交后先入队；班级卡片不提前标"已选"，回执到达后才提示结果并刷新 -->
+    <!-- 选课进度：提交后按顺序处理，确认成功后计为已选 -->
     <div v-if="selectTasks.hasTasks" class="task-panel">
       <div class="task-head">
-        <span>🧾 选课任务<em v-if="selectTasks.pendingCount">（{{ selectTasks.pendingCount }} 项处理中）</em></span>
+        <span>🧾 选课进度<em v-if="selectTasks.pendingCount">（{{ selectTasks.pendingCount }} 项处理中）</em></span>
         <el-button link size="small" @click="selectTasks.clearFinished()">清空已完成</el-button>
       </div>
       <div
@@ -225,9 +224,9 @@
       >
         <span class="task-name" :title="`《${t.courseName}》${t.className}`">《{{ t.courseName }}》{{ t.className }}</span>
         <span class="task-state">
-          <template v-if="t.status === 'queued'">排队中…</template>
+          <template v-if="t.status === 'queued'">处理中…</template>
           <template v-else-if="t.status === 'submitting'">提交中…</template>
-          <template v-else-if="t.status === 'accepted'">已受理，等待确认…</template>
+          <template v-else-if="t.status === 'accepted'">已提交，等待确认…</template>
           <template v-else-if="t.status === 'unknown'">结果确认中，请稍后刷新</template>
           <template v-else-if="t.status === 'success'">✅ 已选上</template>
           <template v-else-if="t.status === 'failed'">❌ 未选上：{{ t.reason }}</template>
@@ -265,7 +264,7 @@ const stock = useStockStore()
 const selectTasks = useSelectTasksStore()
 
 const connTag = computed(() => {
-  if (stock.conn === 'open') return { type: 'success', text: '⚡ 实时同步' }
+  if (stock.conn === 'open') return { type: 'success', text: '⚡ 实时更新' }
   if (stock.conn === 'fallback') return { type: 'warning', text: '轮询校准中' }
   return { type: 'info', text: '连接中…' }
 })
@@ -411,11 +410,11 @@ function fmtClassTime(cls) {
 async function onSelect(cls) {
   // 阶段 21.1：同班/同课程已有未终结任务 → 不重复入队
   if (selectTasks.activeOf(cls.id)) {
-    ElMessage.info('这个教学班已在选课任务中，请等待结果')
+    ElMessage.info('这个教学班已在选课请求中，请等待结果')
     return
   }
   if (currentCourse.value && selectTasks.activeOfCourse(currentCourse.value.id)) {
-    ElMessage.info('这门课已有选课任务在处理中，请等结果出来后再选其他教学班')
+    ElMessage.info('这门课已有选课请求在处理中，请等结果出来后再选其他教学班')
     return
   }
   try {
@@ -423,10 +422,10 @@ async function onSelect(cls) {
       `确认选课：《${currentCourse.value.name}》${cls.className}<br/>` +
         `时间：${fmtClassTime(cls)}（第 ${cls.startWeek}-${cls.endWeek} 周）<br/>` +
         `地点：${cls.location}　名额：${cls.selected}/${cls.capacity}<br/><br/>` +
-        `提交后进入选课任务队列；确认成功后才计为已选，若被拒（冲突/满员）名额自动退回并在这里提示你。`,
+        `提交后系统会按顺序处理；确认成功后计为已选，若因冲突或满员未成功，名额会自动退回并在这里提示你。`,
       '选课确认',
       {
-        confirmButtonText: '加入选课任务',
+        confirmButtonText: '提交选课',
         cancelButtonText: '再想想',
         type: 'info',
         dangerouslyUseHTMLString: true
@@ -442,10 +441,10 @@ async function onSelect(cls) {
     className: cls.className
   })
   if (!task) {
-    ElMessage.info('这个教学班已在选课任务中，请等待结果')
+    ElMessage.info('这个教学班已在选课请求中，请等待结果')
     return
   }
-  ElMessage.info(`已加入选课任务：《${task.courseName}》${task.className}`)
+  ElMessage.info(`已提交选课请求：《${task.courseName}》${task.className}`)
   runTaskQueue()
 }
 
@@ -508,7 +507,7 @@ function waitForSettle(task) {
     const timer = setTimeout(async () => {
       const cur = selectTasks.tasks.find((t) => t.id === task.id)
       if (cur && cur.status === 'accepted') {
-        selectTasks.markUnknown(task.id, '回执未到，请稍后刷新确认')
+        selectTasks.markUnknown(task.id, '结果未确认，请稍后刷新')
       }
       await refreshAfterChange()
       // 回执丢了但落库成功：刷新后以数据库为准直接收敛（未落库则维持"确认中"，等迟到回执）
